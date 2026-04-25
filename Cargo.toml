@@ -3,6 +3,12 @@ members = ["crates/*", "cells/*", "xtask"]
 default-members = ["crates/*", "cells/*"]
 resolver = "3"
 
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
 # getrandom is required for wasm32 targets (enables wasm_js feature)
 # but cargo-shear doesn't detect it since it's feature-activated, not imported
 [workspace.metadata.cargo-shear]
@@ -16,6 +22,7 @@ camino = "1.2"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 dashmap = "6"
 indexmap = "2"
+indextree = "4"
 regex = "1.12"
 globset = "0.4"
 url = "2"
@@ -28,6 +35,7 @@ thiserror = "2.0"
 
 # Async runtime
 futures = "0.3"
+futures-channel = "0.3"
 futures-util = "0.3"
 tokio = { version = "1.48", features = [
   "full",
@@ -59,42 +67,41 @@ tracing-subscriber = { version = "0.3", default-features = false, features = [
   "std",
 ] }
 
-# Serialization - Facet ecosystem (git)
-# Do NOT change those to path dependencies, use the patch blocks below.
-hotmeal = { git = "https://github.com/bearcove/hotmeal", branch = "main" }
-hotmeal-server = { git = "https://github.com/bearcove/hotmeal", branch = "main", features = ["tracing"] }
-hotmeal-wasm = { git = "https://github.com/bearcove/hotmeal", branch = "main" }
+# Serialization - Facet ecosystem (inlined)
+cinereus = { path = "crates/cinereus" }
+hotmeal = { path = "crates/hotmeal" }
+hotmeal-server = { path = "crates/hotmeal-server", features = ["tracing"] }
+hotmeal-wasm = { path = "crates/hotmeal-wasm" }
 
-facet = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-default = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-format = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-json = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-postcard = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-toml = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-value = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-yaml = { git = "https://github.com/facet-rs/facet", branch = "main" }
+facet = "0.46"
+facet-default = "0.46"
+facet-format = "0.47"
+facet-json = "0.46"
+facet-postcard = "0.46"
+facet-toml = "0.46"
+facet-value = "0.46"
+facet-yaml = "0.46"
+facet-testhelpers = "0.46"
+facet-error = "0.46"
 
-facet-styx = { git = "https://github.com/bearcove/styx", branch = "main" }
-styx-embed = { git = "https://github.com/bearcove/styx", branch = "main" }
+facet-styx = "3.0"
+styx-embed = "3.0"
 
-figue = { git = "https://github.com/bearcove/figue", branch = "main" }
+figue = "2.0"
 
-# RPC framework
-roam = { git = "https://github.com/bearcove/roam", branch = "main" }
-roam-shm = { git = "https://github.com/bearcove/roam", branch = "main", features = ["tracing"] }
-roam-tracing = { git = "https://github.com/bearcove/roam", branch = "main" }
-roam-fdpass = { git = "https://github.com/bearcove/roam", branch = "main" }
-roam-local = { git = "https://github.com/bearcove/roam", branch = "main" }
-roam-session = { git = "https://github.com/bearcove/roam", branch = "main", features = ["tracing"] }
-roam-websocket = { git = "https://github.com/bearcove/roam", branch = "main" }
+# RPC framework (vox)
+vox = "0.4"
+vox-fdpass = "0.4"
+vox-local = "0.4"
+vox-websocket = "0.4"
 
 # Process lifecycle
-ur-taking-me-with-you = { git = "https://github.com/bearcove/roam", branch = "main", features = [
+ur-taking-me-with-you = { version = "7.3", features = [
   "tokio",
 ] }
 
 # Incremental computation
-picante = { git = "https://github.com/bearcove/picante", branch = "main" }
+picante = "1.0"
 
 # File system
 fs-err = "3"
@@ -118,6 +125,14 @@ grass = { version = "0.13", features = ["macro"] }
 # JavaScript processing
 oxc = { version = "0.105", features = ["full"] }
 
+# hotmeal/cinereus deps
+compact_str = "0.9"
+smallvec = "1"
+html5ever = "0.38"
+tendril = "0.5"
+divan = "0.1"
+datatest-stable = "0.3"
+
 # Image processing
 base64 = "0.22"
 image = { version = "0.25", features = ["png", "jpeg", "gif"] }
@@ -131,12 +146,19 @@ fontcull = { version = "2.0", default-features = false }
 # Markdown
 pulldown-cmark = "0.13"
 arborium-theme = "2"
+html_parser = "0.7"
+marq = "2.2"
+vox-stream = "0.4"
+vox-types = "0.4"
 
 # SVG optimization (git)
-svag = { git = "https://github.com/bearcove/svag" }
+svag = "0.1.2"
 getrandom = { version = "0.3", features = ["wasm_js"] }
 tracing-wasm = "0.2"
+wasm-tracing = "0.2"
 wasm-bindgen = "=0.2.108"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
 web-sys = { version = "0.3", features = [
   "BinaryType",
   "CloseEvent",
@@ -166,28 +188,17 @@ open = "5"
 hakoniwa = "1.2"
 
 [workspace.package]
+version = "0.6.1"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/bearcove/dodeca"
+homepage = "https://dodeca.bearcove.eu/"
 rust-version = "1.91"
 
-# Force all transitive facet dependencies to use local version for development
-[patch.crates-io]
-facet-svg = { git = "https://github.com/facet-rs/facet-xml", branch = "main" }
-facet-xml = { git = "https://github.com/facet-rs/facet-xml", branch = "main" }
-facet = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-core = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-format = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-json = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-macro-parse = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-macro-types = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-macros = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-macros-impl = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-postcard = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-pretty = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-reflect = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-solver = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-toml = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-value = { git = "https://github.com/facet-rs/facet", branch = "main" }
-facet-yaml = { git = "https://github.com/facet-rs/facet", branch = "main" }
-pikru = { git = "https://github.com/bearcove/pikru", branch = "main" }
+#
+# NOTE: The old `[patch.crates-io]` section that pointed at moving git branches
+# makes lockfile refreshes brittle. We remove it for Nix builds and rely on the
+# lockfile + explicit git deps instead.
 
 # Uncomment to use local facet for development
 # [patch.crates-io]
