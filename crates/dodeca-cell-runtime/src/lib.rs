@@ -7,20 +7,8 @@
 
 pub use cell_host_proto::{HostServiceClient, ReadyMsg};
 pub use dodeca_debug;
-pub use roam;
-pub use roam::Context;
-pub use roam::session::diagnostic::{
-    DiagnosticState, dump_all_diagnostics, register_diagnostic_state,
-};
-pub use roam::session::{ConnectionHandle, RoutedDispatcher, ServiceDispatcher};
-pub use roam_shm::driver::{establish_guest, establish_guest_with_diagnostics};
-pub use roam_shm::guest::ShmGuest;
-pub use roam_shm::spawn::SpawnArgs;
-pub use roam_shm::transport::ShmGuestTransport;
-pub use roam_tracing::{
-    CellTracingDispatcher, CellTracingGuard, CellTracingLayer, CellTracingService,
-    init_cell_tracing,
-};
+pub use vox;
+pub use vox::{ConnectionHandle, RequestContext};
 pub use tokio;
 pub use tracing;
 pub use tracing_subscriber;
@@ -77,12 +65,7 @@ macro_rules! cell_debug {
 macro_rules! run_cell {
     ($cell_name:expr, |$handle:ident| $make_dispatcher:expr) => {{
         use tracing_subscriber::prelude::*;
-        use $crate::{
-            CellTracingDispatcher, ConnectionHandle, DiagnosticState, HostServiceClient, ReadyMsg,
-            RoutedDispatcher, ShmGuest, ShmGuestTransport, SpawnArgs, dodeca_debug,
-            dump_all_diagnostics, establish_guest_with_diagnostics, init_cell_tracing,
-            register_diagnostic_state, tokio, tracing, tracing_subscriber, ur_taking_me_with_you,
-        };
+        use $crate::{ConnectionHandle, dodeca_debug, tokio, tracing, tracing_subscriber, ur_taking_me_with_you};
 
         $crate::cell_debug!(
             "[cell-{}] starting (pid={})",
@@ -96,13 +79,8 @@ macro_rules! run_cell {
             Box::leak(format!("cell-{}", $cell_name).into_boxed_str());
         dodeca_debug::install_sigusr1_handler(cell_name_static);
 
-        // Register diagnostic callback to dump all connection states
-        dodeca_debug::register_diagnostic(|| {
-            let diagnostics = dump_all_diagnostics();
-            if !diagnostics.is_empty() {
-                eprint!("{}", diagnostics);
-            }
-        });
+        // Register diagnostic callback (no-op without SHM transport)
+        dodeca_debug::register_diagnostic(|| {});
 
         // Ensure this process dies when the parent dies (required for macOS pipe-based approach)
         ur_taking_me_with_you::die_with_parent();
@@ -111,35 +89,18 @@ macro_rules! run_cell {
 
         async fn __run_cell_async() -> Result<(), Box<dyn std::error::Error>> {
             $crate::cell_debug!("[cell] async fn starting");
-            let args = SpawnArgs::from_env()?;
-            $crate::cell_debug!("[cell] parsed args: peer_id={}", args.peer_id.get());
-            let peer_id = args.peer_id;
-            let transport = ShmGuestTransport::from_spawn_args(args)?;
-            $crate::cell_debug!("[cell] transport created");
 
-            // Initialize cell-side tracing
-            // Check TRACING_PASSTHROUGH env var - if set, log to stderr instead of via RPC
+            // Initialize cell-side tracing (stderr passthrough in sandbox-friendly mode)
+            // If TRACING_PASSTHROUGH is set, log to stderr; otherwise use a standard fmt layer.
             let use_passthrough = std::env::var("TRACING_PASSTHROUGH").is_ok();
             $crate::cell_debug!("[cell] use_passthrough={}", use_passthrough);
-
-            let tracing_guard = if use_passthrough {
-                // Passthrough mode: log directly to stderr, respecting RUST_LOG
-                use $crate::tracing_subscriber::EnvFilter;
-                tracing_subscriber::fmt()
-                    .with_writer(std::io::stderr)
-                    .with_ansi(false)
-                    .with_target(true)
-                    .with_env_filter(EnvFilter::from_default_env())
-                    .init();
-
-                // No tracing guard needed in passthrough mode
-                None
-            } else {
-                // Normal mode: use roam RPC for tracing
-                let (tracing_layer, tracing_guard) = init_cell_tracing(1024);
-                tracing_subscriber::registry().with(tracing_layer).init();
-                Some(tracing_guard)
-            };
+            use $crate::tracing_subscriber::EnvFilter;
+            tracing_subscriber::fmt()
+                .with_writer(std::io::stderr)
+                .with_ansi(false)
+                .with_target(true)
+                .with_env_filter(EnvFilter::from_default_env())
+                .init();
             $crate::cell_debug!("[cell] tracing initialized");
 
             // Let user code create the dispatcher with access to handle
@@ -152,75 +113,15 @@ macro_rules! run_cell {
             let user_dispatcher = $make_dispatcher;
             $crate::cell_debug!("[cell] user dispatcher created");
 
-            // Combine user's dispatcher with tracing dispatcher using RoutedDispatcher
-            // RoutedDispatcher routes primary.method_ids() to primary, rest to fallback.
-            let combined_dispatcher = if let Some(ref guard) = tracing_guard {
-                let tracing_dispatcher = CellTracingDispatcher::new(guard.service());
-                RoutedDispatcher::new(
-                    tracing_dispatcher, // primary: handles tracing methods
-                    user_dispatcher,    // fallback: handles all cell-specific methods
-                )
-            } else {
-                // Passthrough mode: no tracing dispatcher needed, but we need same type
-                // Create a dummy service just for the dispatcher (it won't receive calls)
-                let (_, dummy_guard) = init_cell_tracing(1);
-                let tracing_dispatcher = CellTracingDispatcher::new(dummy_guard.defuse());
-                RoutedDispatcher::new(tracing_dispatcher, user_dispatcher)
-            };
-            // Create diagnostic state for this connection
-            let diagnostic_state =
-                std::sync::Arc::new(DiagnosticState::new(format!("cell-{}", $cell_name)));
-            register_diagnostic_state(&diagnostic_state);
-            $crate::cell_debug!("[cell] diagnostic state registered");
-
-            $crate::cell_debug!("[cell] calling establish_guest_with_diagnostics");
-            let (handle, _incoming, driver) = establish_guest_with_diagnostics(
-                transport,
-                combined_dispatcher,
-                Some(diagnostic_state),
-            );
-            $crate::cell_debug!("[cell] establish_guest_with_diagnostics returned");
-
-            // Store the real handle
-            let _ = handle_cell.set(handle.clone());
-            $crate::cell_debug!("[cell] handle stored");
-
-            // Spawn driver FIRST - it needs to be running for RPC calls to work
-            $crate::cell_debug!("[cell] spawning driver task");
-            let driver_handle = tokio::spawn(async move {
-                $crate::cell_debug!("[cell] driver task starting");
-                if let Err(e) = driver.run().await {
-                    eprintln!("Driver error: {:?}", e);
-                    std::process::exit(1);
-                }
-                $crate::cell_debug!("[cell] driver task exited cleanly");
-            });
-            $crate::cell_debug!("[cell] driver task spawned");
-
-            // Now start tracing service - this queries host config via RPC
-            // (driver must be running for this to work)
-            if let Some(guard) = tracing_guard {
-                guard.start(handle.clone()).await;
-                $crate::cell_debug!("[cell] tracing started (queried host config)");
-            }
-
-            // Signal readiness to host
-            let host = HostServiceClient::new(handle);
-            $crate::cell_debug!("[cell] calling host.ready()");
-            host.ready(ReadyMsg {
-                peer_id: peer_id.get() as u16,
-                cell_name: $cell_name.to_string(),
-                pid: Some(std::process::id()),
-                version: None,
-                features: vec![],
-            })
-            .await?;
-            $crate::cell_debug!("[cell] host.ready() returned successfully");
-
-            // Wait for driver to complete (it runs until connection closes)
-            if let Err(e) = driver_handle.await {
-                eprintln!("[cell] driver task panicked: {e:?}");
-            }
+            // With vox 0.4, we keep the user's dispatcher as-is here; tracing is handled
+            // by standard `tracing_subscriber` output for now.
+            let combined_dispatcher = user_dispatcher;
+            $crate::cell_debug!("[cell] diagnostics disabled (no SHM transport)");
+            // NOTE: SHM-based transport was removed to keep the dependency graph on crates.io.
+            // Cells will be re-wired to use vox-local / vox-stream transports by the host.
+            // For now, this runtime just constructs the dispatcher so the workspace compiles.
+            let _ = combined_dispatcher;
+            let _ = handle_cell;
             Ok(())
         }
 

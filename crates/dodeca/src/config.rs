@@ -138,6 +138,8 @@ pub struct ResolvedConfig {
     pub dark_theme_css: String,
     /// Build step definitions from config
     pub build_steps: Option<std::collections::HashMap<String, dodeca_config::BuildStepDef>>,
+    /// Protocol configuration for non-HTTP protocols
+    pub protocols: dodeca_config::ProtocolsConfig,
 }
 
 impl ResolvedConfig {
@@ -319,6 +321,7 @@ fn load_config(config_path: &Utf8Path) -> Result<ResolvedConfig> {
         light_theme_css,
         dark_theme_css,
         build_steps: config.build_steps,
+        protocols: config.protocols.unwrap_or_default(),
     })
 }
 

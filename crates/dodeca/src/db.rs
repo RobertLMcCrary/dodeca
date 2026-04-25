@@ -265,6 +265,16 @@ pub enum OutputFile {
         /// All id attribute values (for fragment validation)
         element_ids: Vec<String>,
     },
+    /// Gemini output: route -> gmi content
+    Gemini {
+        route: Route,
+        content: String,
+    },
+    /// Gopher output: route -> txt content
+    Gopher {
+        route: Route,
+        content: String,
+    },
     /// CSS output from compiled SASS (path includes cache-bust hash)
     Css { path: StaticPath, content: String },
     /// Static file: relative path -> binary content (path includes cache-bust hash)

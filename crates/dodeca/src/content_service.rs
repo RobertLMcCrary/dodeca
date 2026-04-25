@@ -23,7 +23,7 @@ impl HostContentService {
 }
 
 impl ContentService for HostContentService {
-    async fn find_content(&self, _cx: &roam::Context, path: String) -> ServeContent {
+    async fn find_content(&self, _cx: &vox::RequestContext, path: String) -> ServeContent {
         // Stall until the current revision is fully ready.
         self.server.wait_revision_ready().await;
 
@@ -57,7 +57,7 @@ impl ContentService for HostContentService {
 
     async fn get_scope(
         &self,
-        _cx: &roam::Context,
+        _cx: &vox::RequestContext,
         route: String,
         path: Vec<String>,
     ) -> Vec<ScopeEntry> {
@@ -66,7 +66,7 @@ impl ContentService for HostContentService {
 
     async fn eval_expression(
         &self,
-        _cx: &roam::Context,
+        _cx: &vox::RequestContext,
         route: String,
         expression: String,
     ) -> EvalResult {

@@ -42,8 +42,8 @@ use cell_webp_proto::{WebPEncodeInput, WebPProcessorClient, WebPResult};
 use dashmap::DashMap;
 use facet::Facet;
 
-use roam_shm::driver::MultiPeerHostDriver;
-use roam_shm::{SegmentConfig, ShmHost};
+use vox_shm::driver::MultiPeerHostDriver;
+use vox_shm::{SegmentConfig, ShmHost};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
@@ -148,7 +148,7 @@ impl HostCellLifecycle {
 }
 
 impl CellLifecycle for HostCellLifecycle {
-    async fn ready(&self, _cx: &roam::Context, msg: ReadyMsg) -> ReadyAck {
+    async fn ready(&self, _cx: &vox::RequestContext, msg: ReadyMsg) -> ReadyAck {
         let peer_id = msg.peer_id;
         let cell_name = msg.cell_name.clone();
         debug!("Cell {} (peer_id={}) is ready", cell_name, peer_id);
@@ -197,7 +197,7 @@ impl HostServiceImpl {
 
 impl HostService for HostServiceImpl {
     // Cell Lifecycle
-    async fn ready(&self, _cx: &roam::Context, msg: ReadyMsg) -> ReadyAck {
+    async fn ready(&self, _cx: &vox::RequestContext, msg: ReadyMsg) -> ReadyAck {
         let peer_id = msg.peer_id;
         let cell_name = msg.cell_name.clone();
         debug!("Cell {} (peer_id={}) is ready", cell_name, peer_id);
@@ -217,7 +217,7 @@ impl HostService for HostServiceImpl {
     // Template Host
     async fn load_template(
         &self,
-        cx: &roam::Context,
+        cx: &vox::RequestContext,
         context_id: ContextId,
         name: String,
     ) -> LoadTemplateResult {
@@ -227,7 +227,7 @@ impl HostService for HostServiceImpl {
 
     async fn resolve_data(
         &self,
-        cx: &roam::Context,
+        cx: &vox::RequestContext,
         context_id: ContextId,
         path: Vec<String>,
     ) -> ResolveDataResult {
@@ -237,7 +237,7 @@ impl HostService for HostServiceImpl {
 
     async fn keys_at(
         &self,
-        cx: &roam::Context,
+        cx: &vox::RequestContext,
         context_id: ContextId,
         path: Vec<String>,
     ) -> KeysAtResult {
@@ -247,7 +247,7 @@ impl HostService for HostServiceImpl {
 
     async fn call_function(
         &self,
-        cx: &roam::Context,
+        cx: &vox::RequestContext,
         context_id: ContextId,
         name: String,
         args: Vec<Value>,
@@ -260,7 +260,7 @@ impl HostService for HostServiceImpl {
     }
 
     // Content Service
-    async fn find_content(&self, cx: &roam::Context, path: String) -> ServeContent {
+    async fn find_content(&self, cx: &vox::RequestContext, path: String) -> ServeContent {
         if let Some(server) = &self.site_server {
             use cell_http_proto::ContentService;
             let content_service = crate::content_service::HostContentService::new(server.clone());
@@ -275,7 +275,7 @@ impl HostService for HostServiceImpl {
 
     async fn get_scope(
         &self,
-        cx: &roam::Context,
+        cx: &vox::RequestContext,
         route: String,
         path: Vec<String>,
     ) -> Vec<ScopeEntry> {
@@ -290,7 +290,7 @@ impl HostService for HostServiceImpl {
 
     async fn eval_expression(
         &self,
-        cx: &roam::Context,
+        cx: &vox::RequestContext,
         route: String,
         expression: String,
     ) -> cell_host_proto::EvalResult {
@@ -304,24 +304,24 @@ impl HostService for HostServiceImpl {
     }
 
     // TUI Commands (TUI → Host)
-    async fn send_command(&self, _cx: &roam::Context, command: ServerCommand) -> CommandResult {
+    async fn send_command(&self, _cx: &vox::RequestContext, command: ServerCommand) -> CommandResult {
         // Forward to Host singleton
         crate::host::Host::get().handle_tui_command(command)
     }
 
-    async fn quit(&self, _cx: &roam::Context) {
+    async fn quit(&self, _cx: &vox::RequestContext) {
         crate::host::Host::get().signal_exit();
     }
 
     // Vite Integration
-    async fn get_vite_port(&self, _cx: &roam::Context) -> Option<u16> {
+    async fn get_vite_port(&self, _cx: &vox::RequestContext) -> Option<u16> {
         crate::host::Host::get().get_vite_port()
     }
 
     // HTML Host callbacks
     async fn minify_css(
         &self,
-        _cx: &roam::Context,
+        _cx: &vox::RequestContext,
         css: String,
     ) -> cell_host_proto::MinifyCssResult {
         // Delegate to CSS cell for minification (empty path_map = minify only)
@@ -343,7 +343,7 @@ impl HostService for HostServiceImpl {
         }
     }
 
-    async fn minify_js(&self, _cx: &roam::Context, js: String) -> cell_host_proto::MinifyJsResult {
+    async fn minify_js(&self, _cx: &vox::RequestContext, js: String) -> cell_host_proto::MinifyJsResult {
         // Delegate to JS cell for minification (using empty path_map for minify-only)
         match js_cell().await {
             Some(client) => {
@@ -366,7 +366,7 @@ impl HostService for HostServiceImpl {
 
     async fn process_inline_css(
         &self,
-        _cx: &roam::Context,
+        _cx: &vox::RequestContext,
         css: String,
         path_map: HashMap<String, String>,
     ) -> cell_host_proto::ProcessCssResult {
@@ -391,7 +391,7 @@ impl HostService for HostServiceImpl {
 
     async fn process_inline_js(
         &self,
-        _cx: &roam::Context,
+        _cx: &vox::RequestContext,
         js: String,
         path_map: HashMap<String, String>,
     ) -> cell_host_proto::ProcessJsResult {
@@ -559,12 +559,12 @@ async fn init_cells_inner() -> eyre::Result<()> {
 
     // Clean up stale SHM files from previous runs
     #[cfg(unix)]
-    roam_shm::cleanup::cleanup_stale_shm_files("dodeca-shm")?;
+    vox_shm::cleanup::cleanup_stale_shm_files("dodeca-shm")?;
 
     // Create SHM path in /tmp/roam-shm/ directory
     // The watchdog cleans up on exit, and we clean up stale files on startup
     #[cfg(unix)]
-    let shm_path = roam_shm::cleanup::get_shm_path("dodeca-shm", std::process::id())?;
+    let shm_path = vox_shm::cleanup::get_shm_path("dodeca-shm", std::process::id())?;
 
     // On Windows, use regular temp dir (Auto cleanup via FILE_FLAG_DELETE_ON_CLOSE)
     #[cfg(not(unix))]
@@ -593,7 +593,7 @@ async fn init_cells_inner() -> eyre::Result<()> {
         max_payload_mb, "SHM config (override with DODECA_SHM_* env vars)"
     );
 
-    use roam_shm::SizeClass;
+    use vox_shm::SizeClass;
     let config = SegmentConfig {
         max_guests,
         max_payload_size: max_payload as u32,
@@ -606,9 +606,9 @@ async fn init_cells_inner() -> eyre::Result<()> {
         // On Windows: FILE_FLAG_DELETE_ON_CLOSE deletes when all handles close (guests can still open)
         // On Unix: Manual cleanup via Drop guard (unlink immediately breaks lazy spawning)
         file_cleanup: if cfg!(windows) {
-            roam_shm::FileCleanup::Auto
+            vox_shm::FileCleanup::Auto
         } else {
-            roam_shm::FileCleanup::Manual
+            vox_shm::FileCleanup::Manual
         },
         ..SegmentConfig::default()
     };
@@ -618,7 +618,7 @@ async fn init_cells_inner() -> eyre::Result<()> {
     debug!("init_cells_inner: SHM host created");
 
     // Extract diagnostic view before host is moved into driver
-    let diagnostic_view = roam_shm::ShmDiagnosticView::from_host(&host);
+    let diagnostic_view = vox_shm::ShmDiagnosticView::from_host(&host);
     dodeca_debug::register_diagnostic(move || {
         let output = diagnostic_view.diagnostics().format();
         if !output.is_empty() {
@@ -630,8 +630,8 @@ async fn init_cells_inner() -> eyre::Result<()> {
     // On Unix: spawn watchdog and create .meta file
     #[cfg(unix)]
     {
-        roam_shm::cleanup::write_meta_file(&shm_path)?;
-        roam_shm::cleanup::spawn_watchdog(shm_path.clone())?;
+        vox_shm::cleanup::write_meta_file(&shm_path)?;
+        vox_shm::cleanup::spawn_watchdog(shm_path.clone())?;
     }
 
     // Find cell binary directory
@@ -763,7 +763,7 @@ async fn init_cells_inner() -> eyre::Result<()> {
             debug!("Tracing consumer: starting");
             while let Some(tagged) = tracing_rx.recv().await {
                 // Dispatch through the host's tracing subscriber
-                roam_tracing::dispatch_record(&tagged);
+                tracing::dispatch_record(&tagged);
             }
             debug!("Tracing consumer: channel closed");
         });

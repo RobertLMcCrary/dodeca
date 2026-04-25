@@ -20,6 +20,7 @@ mod image;
 mod init;
 mod link_checker;
 mod logging;
+mod protocols;
 mod queries;
 mod render;
 mod revision;
@@ -299,13 +300,13 @@ fn main() -> Result<()> {
 
     // Register diagnostic callback to dump all RPC connection states
     dodeca_debug::register_diagnostic(|| {
-        let diagnostics = roam_session::diagnostic::dump_all_diagnostics();
+        let diagnostics = vox::session::diagnostic::dump_all_diagnostics();
         eprint!("{}", diagnostics);
     });
 
     // Register diagnostic callback to dump all auditable channel states
     dodeca_debug::register_diagnostic(|| {
-        let channels = roam_shm::dump_all_channels();
+        let channels = vox_shm::dump_all_channels();
         if !channels.is_empty() {
             eprint!("{}", channels);
         }
@@ -343,8 +344,8 @@ async fn async_main(command: Command) -> Result<()> {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
             loop {
                 interval.tick().await;
-                let diagnostics = roam_session::diagnostic::dump_all_diagnostics();
-                let channels = roam_shm::dump_all_channels();
+                let diagnostics = vox::session::diagnostic::dump_all_diagnostics();
+                let channels = vox_shm::dump_all_channels();
                 if diagnostics.is_empty() && channels.is_empty() {
                     eprintln!("[SHM_DEBUG] (idle)");
                 } else {
@@ -1355,6 +1356,10 @@ pub async fn build(
     // Write outputs to disk, only if changed
     let mut stats = BuildStats::default();
 
+    // Check config if protocols are enabled to know if we should put html in /http/
+    let global_cfg = crate::config::global_config().expect("Global config not initialized");
+    let multi_protocol = global_cfg.protocols.gemini.unwrap_or(false) || global_cfg.protocols.gopher.unwrap_or(false);
+
     for output in &site_output.files {
         match output {
             OutputFile::Html {
@@ -1363,7 +1368,6 @@ pub async fn build(
                 head_injections,
                 ..
             } => {
-                // Apply livereload injection with build info (no dead link checking in build mode)
                 let final_html = inject_livereload_with_build_info(
                     content,
                     render_options,
@@ -1373,6 +1377,11 @@ pub async fn build(
                 )
                 .await;
                 let path = route_to_path(output_dir, route);
+                let path = if multi_protocol {
+                    output_dir.join("http").join(path.strip_prefix(output_dir).unwrap_or(&path))
+                } else {
+                    path
+                };
 
                 if store.write_if_changed(&path, final_html.as_bytes())? {
                     stats.html_written += 1;
@@ -1380,18 +1389,64 @@ pub async fn build(
                     stats.html_skipped += 1;
                 }
             }
+            OutputFile::Gemini { route, content } => {
+                let mut path = route_to_path(output_dir, route);
+                // change .html to .gmi
+                if path.extension() == Some("html") {
+                    path.set_extension("gmi");
+                }
+                let path = output_dir.join("gemini").join(path.strip_prefix(output_dir).unwrap_or(&path));
+                if store.write_if_changed(&path, content.as_bytes())? {
+                    // We can track gemini stats if we wanted
+                }
+            }
+            OutputFile::Gopher { route, content } => {
+                let mut path = route_to_path(output_dir, route);
+                if path.file_name() == Some(std::ffi::OsStr::new("index.html")) {
+                    path.set_file_name("gophermap");
+                } else if path.extension() == Some("html") {
+                    path.set_extension("txt");
+                }
+                let path = output_dir.join("gopher").join(path.strip_prefix(output_dir).unwrap_or(&path));
+                if store.write_if_changed(&path, content.as_bytes())? {
+                    // track gopher stats
+                }
+            }
             OutputFile::Css { path, content } => {
                 let dest = output_dir.join(path.as_str());
+                let dest = if multi_protocol {
+                    output_dir.join("http").join(dest.strip_prefix(output_dir).unwrap_or(&dest))
+                } else {
+                    dest
+                };
                 if store.write_if_changed(&dest, content.as_bytes())? {
                     stats.css_written = true;
                 }
             }
             OutputFile::Static { path, content } => {
-                let dest = output_dir.join(path.as_str());
-                if store.write_if_changed(&dest, content)? {
-                    stats.static_written += 1;
+                if multi_protocol {
+                    let mut written = false;
+                    for proto in ["http", "gemini", "gopher"] {
+                        if proto == "gemini" && !global_cfg.protocols.gemini.unwrap_or(false) { continue; }
+                        if proto == "gopher" && !global_cfg.protocols.gopher.unwrap_or(false) { continue; }
+                        
+                        let dest = output_dir.join(proto).join(path.as_str());
+                        if store.write_if_changed(&dest, content)? {
+                            written = true;
+                        }
+                    }
+                    if written {
+                        stats.static_written += 1;
+                    } else {
+                        stats.static_skipped += 1;
+                    }
                 } else {
-                    stats.static_skipped += 1;
+                    let dest = output_dir.join(path.as_str());
+                    if store.write_if_changed(&dest, content)? {
+                        stats.static_written += 1;
+                    } else {
+                        stats.static_skipped += 1;
+                    }
                 }
             }
         }
@@ -2103,7 +2158,7 @@ async fn serve_plain(
                     .map_err(|e| eyre!("Failed to connect to fd-socket {}: {}", channel_path, e))?;
 
                 tracing::info!("Receiving TCP listener FD from test harness");
-                let fd = roam_fdpass::recv_fd(&unix_stream)
+                let fd = vox_fdpass::recv_fd(&unix_stream)
                     .await
                     .map_err(|e| eyre!("Failed to receive FD: {}", e))?;
 
@@ -2139,14 +2194,14 @@ async fn serve_plain(
                     "Connecting to named pipe for socket passing: {}",
                     channel_path
                 );
-                let mut pipe_stream = roam_local::connect(channel_path)
+                let mut pipe_stream = vox_local::connect(channel_path)
                     .await
                     .map_err(|e| eyre!("Failed to connect to fd-socket {}: {}", channel_path, e))?;
 
                 eprintln!("[ddc] Connected, receiving TCP listener...");
                 std::io::stderr().flush().ok();
                 tracing::info!("Receiving TCP listener from test harness");
-                let std_listener = roam_fdpass::recv_tcp_listener(&mut pipe_stream)
+                let std_listener = vox_fdpass::recv_tcp_listener(&mut pipe_stream)
                     .await
                     .map_err(|e| {
                         eprintln!("[ddc] Failed to receive TCP listener: {}", e);
@@ -3291,7 +3346,7 @@ async fn serve_static(
     }
 
     impl ContentService for StaticContentService {
-        async fn find_content(&self, _cx: &roam::Context, path: String) -> ServeContent {
+        async fn find_content(&self, _cx: &vox::RequestContext, path: String) -> ServeContent {
             // Normalize path - remove leading slash
             let path = path.trim_start_matches('/');
 
@@ -3353,7 +3408,7 @@ async fn serve_static(
 
         async fn get_scope(
             &self,
-            _cx: &roam::Context,
+            _cx: &vox::RequestContext,
             _route: String,
             _path: Vec<String>,
         ) -> Vec<cell_http_proto::ScopeEntry> {
@@ -3362,7 +3417,7 @@ async fn serve_static(
 
         async fn eval_expression(
             &self,
-            _cx: &roam::Context,
+            _cx: &vox::RequestContext,
             _route: String,
             _expression: String,
         ) -> cell_http_proto::EvalResult {

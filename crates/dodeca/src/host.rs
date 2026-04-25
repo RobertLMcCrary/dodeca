@@ -18,8 +18,8 @@ use std::time::Duration;
 use cell_gingembre_proto::ContextId;
 use cell_host_proto::{CommandResult, ServerCommand};
 use dashmap::DashMap;
-use roam::session::{ConnectionHandle, RoutedDispatcher};
-use roam_tracing::{HostTracingDispatcher, HostTracingState, TaggedRecord};
+use vox::session::{ConnectionHandle, RoutedDispatcher};
+use tracing::{HostTracingDispatcher, HostTracingState, TaggedRecord};
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::process::Command;
 use tokio::sync::{Mutex, Notify, mpsc};
@@ -33,7 +33,7 @@ use crate::template_host::RenderContext;
 
 type BaseDispatcher = RoutedDispatcher<
     cell_host_proto::HostServiceDispatcher<crate::cells::HostServiceImpl>,
-    HostTracingDispatcher<roam_tracing::HostTracingService>,
+    HostTracingDispatcher<tracing::HostTracingService>,
 >;
 
 type DevtoolsDispatcher =
@@ -45,7 +45,7 @@ pub enum MaybeDevtoolsDispatcher {
     WithoutDevtools(BaseDispatcher),
 }
 
-impl roam::session::ServiceDispatcher for MaybeDevtoolsDispatcher {
+impl vox::session::ServiceDispatcher for MaybeDevtoolsDispatcher {
     fn method_ids(&self) -> Vec<u64> {
         match self {
             MaybeDevtoolsDispatcher::WithDevtools(d) => d.method_ids(),
@@ -55,9 +55,9 @@ impl roam::session::ServiceDispatcher for MaybeDevtoolsDispatcher {
 
     fn dispatch(
         &self,
-        cx: roam::session::Context,
+        cx: vox::session::Context,
         payload: Vec<u8>,
-        registry: &mut roam::session::ChannelRegistry,
+        registry: &mut vox::session::ChannelRegistry,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'static>> {
         match self {
             MaybeDevtoolsDispatcher::WithDevtools(d) => d.dispatch(cx.clone(), payload, registry),
@@ -145,7 +145,7 @@ pub struct Host {
     // -------------------------------------------------------------------------
     /// MultiPeerHostDriver handle for dynamically creating peers.
     /// Set during cell initialization via `set_driver_handle()`.
-    driver_handle: std::sync::OnceLock<roam_shm::driver::MultiPeerHostDriverHandle>,
+    driver_handle: std::sync::OnceLock<vox_shm::driver::MultiPeerHostDriverHandle>,
 
     // -------------------------------------------------------------------------
     // Cell Tracing
@@ -314,12 +314,12 @@ impl Host {
 
     /// Set the driver handle for dynamic peer creation (lazy spawning).
     /// This must be called during cell initialization.
-    pub fn set_driver_handle(&self, handle: roam_shm::driver::MultiPeerHostDriverHandle) {
+    pub fn set_driver_handle(&self, handle: vox_shm::driver::MultiPeerHostDriverHandle) {
         let _ = self.driver_handle.set(handle);
     }
 
     /// Get the driver handle for creating peers dynamically.
-    pub fn driver_handle(&self) -> Option<&roam_shm::driver::MultiPeerHostDriverHandle> {
+    pub fn driver_handle(&self) -> Option<&vox_shm::driver::MultiPeerHostDriverHandle> {
         self.driver_handle.get()
     }
 
@@ -435,7 +435,7 @@ pub trait CellClient: Sized {
     const CELL_NAME: &'static str;
 
     /// Create a client from a connection handle.
-    fn from_handle(handle: roam::session::ConnectionHandle) -> Self;
+    fn from_handle(handle: vox::session::ConnectionHandle) -> Self;
 }
 
 // ============================================================================
@@ -448,7 +448,7 @@ macro_rules! impl_cell_client {
         impl CellClient for $client {
             const CELL_NAME: &'static str = $name;
 
-            fn from_handle(handle: roam::session::ConnectionHandle) -> Self {
+            fn from_handle(handle: vox::session::ConnectionHandle) -> Self {
                 Self::new(handle)
             }
         }
@@ -568,7 +568,7 @@ async fn spawn_cell_process(cell_name: &str, pending: PendingCell, quiet_mode: b
     let binary_name = format!("ddc-cell-{}", cell_name);
     let cell_name_for_death = cell_name.to_string();
     let ticket = match driver_handle
-        .create_peer(roam_shm::spawn::AddPeerOptions {
+        .create_peer(vox_shm::spawn::AddPeerOptions {
             peer_name: Some(binary_name.clone()),
             on_death: Some(Arc::new(move |peer_id| {
                 eprintln!(
@@ -672,10 +672,10 @@ async fn spawn_cell_process(cell_name: &str, pending: PendingCell, quiet_mode: b
     };
 
     // Create diagnostic state for host's view of this connection (for SIGUSR1 dumps)
-    let diagnostic_state = std::sync::Arc::new(roam_session::diagnostic::DiagnosticState::new(
+    let diagnostic_state = std::sync::Arc::new(vox::session::diagnostic::DiagnosticState::new(
         format!("host→{}", cell_name),
     ));
-    roam_session::diagnostic::register_diagnostic_state(&diagnostic_state);
+    vox::session::diagnostic::register_diagnostic_state(&diagnostic_state);
 
     match driver_handle
         .add_peer_with_diagnostics(peer_id, dispatcher, Some(diagnostic_state))
@@ -799,8 +799,8 @@ where
             line.clear();
             match reader.read_line(&mut line).await {
                 Ok(0) => {
-                    roam_tracing::dispatch_message(
-                        roam_tracing::Level::Debug,
+                    tracing::dispatch_message(
+                        tracing::Level::Debug,
                         &target,
                         "stdio EOF",
                     );
@@ -809,12 +809,12 @@ where
                 Ok(_) => {
                     let trimmed = line.trim_end_matches(&['\r', '\n'][..]);
                     if !trimmed.is_empty() {
-                        roam_tracing::dispatch_message(roam_tracing::Level::Info, &target, trimmed);
+                        tracing::dispatch_message(tracing::Level::Info, &target, trimmed);
                     }
                 }
                 Err(e) => {
                     let msg = format!("stdio read failed: {e:?}");
-                    roam_tracing::dispatch_message(roam_tracing::Level::Warn, &target, &msg);
+                    tracing::dispatch_message(tracing::Level::Warn, &target, &msg);
                     break;
                 }
             }

@@ -1159,6 +1159,19 @@ pub async fn build_site<DB: Db>(db: &DB) -> PicanteResult<Result<SiteOutput, Sit
     tracing::debug!("build_site: starting");
     let mut files = Vec::new();
 
+    let global_cfg = crate::config::global_config().expect("Global config not initialized");
+    let mut handlers: Vec<Box<dyn crate::protocols::ProtocolHandler>> = vec![
+        Box::new(crate::protocols::HtmlHandler),
+    ];
+    if global_cfg.protocols.gemini.unwrap_or(false) {
+        handlers.push(Box::new(crate::protocols::GeminiHandler));
+    }
+    if global_cfg.protocols.gopher.unwrap_or(false) {
+        handlers.push(Box::new(crate::protocols::GopherHandler {
+            header: global_cfg.protocols.gopher_header.clone(),
+        }));
+    }
+
     // Build the site tree to get all routes
     let site_tree = match build_tree(db).await? {
         Ok(tree) => tree,
@@ -1174,13 +1187,25 @@ pub async fn build_site<DB: Db>(db: &DB) -> PicanteResult<Result<SiteOutput, Sit
                 let extracted = crate::cells::extract_links_from_html(served.html.clone())
                     .await
                     .unwrap_or_default();
-                files.push(OutputFile::Html {
-                    route: route.clone(),
-                    content: served.html,
-                    head_injections: served.head_injections,
-                    hrefs: extracted.hrefs,
-                    element_ids: extracted.element_ids,
-                });
+                let parsed_dom = html_parser::Dom::parse(&served.html).unwrap_or_default();
+                let has_custom_tags = served.html.contains("data-protocol") || served.html.contains("<wrapper>");
+                for handler in &handlers {
+                    let proto = handler.protocol_name();
+                    let mut handler_dom = parsed_dom.clone();
+                    if has_custom_tags {
+                        handler_dom = crate::protocols::filter_dom(handler_dom, proto);
+                    }
+                    if let Some(output) = handler.generate(
+                        route,
+                        &handler_dom,
+                        &served.html,
+                        served.head_injections.clone(),
+                        extracted.hrefs.clone(),
+                        extracted.element_ids.clone(),
+                    ) {
+                        files.push(output);
+                    }
+                }
             }
             Ok(None) => {}
             Err(e) => return Ok(Err(e)),
@@ -1194,13 +1219,25 @@ pub async fn build_site<DB: Db>(db: &DB) -> PicanteResult<Result<SiteOutput, Sit
                 let extracted = crate::cells::extract_links_from_html(served.html.clone())
                     .await
                     .unwrap_or_default();
-                files.push(OutputFile::Html {
-                    route: route.clone(),
-                    content: served.html,
-                    head_injections: served.head_injections,
-                    hrefs: extracted.hrefs,
-                    element_ids: extracted.element_ids,
-                });
+                let parsed_dom = html_parser::Dom::parse(&served.html).unwrap_or_default();
+                let has_custom_tags = served.html.contains("data-protocol") || served.html.contains("<wrapper>");
+                for handler in &handlers {
+                    let proto = handler.protocol_name();
+                    let mut handler_dom = parsed_dom.clone();
+                    if has_custom_tags {
+                        handler_dom = crate::protocols::filter_dom(handler_dom, proto);
+                    }
+                    if let Some(output) = handler.generate(
+                        route,
+                        &handler_dom,
+                        &served.html,
+                        served.head_injections.clone(),
+                        extracted.hrefs.clone(),
+                        extracted.element_ids.clone(),
+                    ) {
+                        files.push(output);
+                    }
+                }
             }
             Ok(None) => {}
             Err(e) => return Ok(Err(e)),

@@ -21,9 +21,8 @@ dodeca-protocol = { path = "../dodeca-protocol" }
 livereload-client = { path = "../livereload-client" }
 
 # RPC transport
-roam.workspace = true
-roam-session.workspace = true
-roam-websocket.workspace = true
+vox.workspace = true
+vox-websocket.workspace = true
 
 # UI framework
 sycamore = "0.9"

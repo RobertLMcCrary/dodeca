@@ -48,6 +48,27 @@ pub struct DodecaConfig {
     /// Keys are step names, values define params and command.
     #[facet(default)]
     pub build_steps: Option<HashMap<String, BuildStepDef>>,
+
+    /// Protocols configuration
+    #[facet(default)]
+    pub protocols: Option<ProtocolsConfig>,
+}
+
+/// Protocols configuration
+#[derive(Debug, Clone, Default, Facet)]
+#[facet(rename_all = "snake_case")]
+pub struct ProtocolsConfig {
+    /// Enable Gemini protocol static output
+    #[facet(default)]
+    pub gemini: Option<bool>,
+
+    /// Enable Gopher protocol static output
+    #[facet(default)]
+    pub gopher: Option<bool>,
+
+    /// Header text to include at the top of Gopher pages
+    #[facet(default)]
+    pub gopher_header: Option<String>,
 }
 
 /// Syntax highlighting theme configuration

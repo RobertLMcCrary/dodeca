@@ -12,8 +12,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Instant;
 
 use eyre::Result;
-use roam::tunnel_pair;
-use roam_shm::driver::IncomingConnections;
+use vox::tunnel_pair;
+use vox_shm::driver::IncomingConnections;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::sync::watch;
@@ -36,7 +36,7 @@ pub fn find_cell_path() -> Result<std::path::PathBuf> {
     Ok(std::path::PathBuf::from("ddc-cell-http"))
 }
 
-// Note: Cell tracing is handled by roam_tracing's TracingHost which subscribes
+// Note: Cell tracing is handled by tracing's TracingHost which subscribes
 // to each cell's CellTracing service. See cells.rs for the host-side setup.
 
 // ============================================================================
@@ -89,14 +89,14 @@ impl DevtoolsService for HostDevtoolsService {
     ///
     /// The browser was already registered when its virtual connection was accepted.
     /// This method associates the subscription with the browser using `cx.conn_id`.
-    async fn subscribe(&self, cx: &roam::Context, route: String) {
+    async fn subscribe(&self, cx: &vox::RequestContext, route: String) {
         let conn_id = cx.conn_id().raw();
         tracing::info!(conn_id, route = %route, "devtools: client subscribing to route");
         self.server.set_browser_route(conn_id, route);
     }
 
     /// Get scope entries for the current route.
-    async fn get_scope(&self, _cx: &roam::Context, path: Option<Vec<String>>) -> Vec<ScopeEntry> {
+    async fn get_scope(&self, _cx: &vox::RequestContext, path: Option<Vec<String>>) -> Vec<ScopeEntry> {
         // Use "/" as default route - the client should call subscribe() first
         // to establish which route they're viewing
         let path = path.unwrap_or_default();
@@ -106,7 +106,7 @@ impl DevtoolsService for HostDevtoolsService {
     /// Evaluate an expression in a snapshot's context.
     async fn eval(
         &self,
-        _cx: &roam::Context,
+        _cx: &vox::RequestContext,
         snapshot_id: String,
         expression: String,
     ) -> EvalResult {
@@ -121,7 +121,7 @@ impl DevtoolsService for HostDevtoolsService {
     }
 
     /// Dismiss an error notification.
-    async fn dismiss_error(&self, _cx: &roam::Context, route: String) {
+    async fn dismiss_error(&self, _cx: &vox::RequestContext, route: String) {
         tracing::debug!(route = %route, "Client dismissed error via RPC");
         // The existing implementation just logs this - errors are resolved
         // when the template successfully re-renders
@@ -440,7 +440,7 @@ async fn handle_browser_connection(
     // Create a duplex to bridge the tunnel
     let (client, server_stream) = tokio::io::duplex(64 * 1024);
     let (_read_handle, _write_handle) =
-        roam::tunnel_stream(client, local, roam::DEFAULT_TUNNEL_CHUNK_SIZE);
+        vox::tunnel_stream(client, local, vox::DEFAULT_TUNNEL_CHUNK_SIZE);
 
     tracing::trace!(
         conn_id,
@@ -511,7 +511,7 @@ pub async fn accept_browser_connections(
 
         // Accept the connection
         // Host doesn't serve methods on this connection, only calls back to browser
-        let handle = match conn.accept(roam::wire::Metadata::default(), None).await {
+        let handle = match conn.accept(vox::Metadata::default(), None).await {
             Ok(h) => h,
             Err(e) => {
                 tracing::warn!(error = ?e, "Failed to accept browser virtual connection");

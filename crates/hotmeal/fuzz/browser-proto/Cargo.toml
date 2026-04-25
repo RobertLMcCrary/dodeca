@@ -1,0 +1,11 @@
+[package]
+name = "browser-proto"
+version = "1.0.0"
+publish = false
+edition = "2024"
+
+[dependencies]
+roam = "7.0.0"
+facet = "0.44.1"
+facet-testhelpers = "0.44.1"
+hotmeal = { path = "../.." }
