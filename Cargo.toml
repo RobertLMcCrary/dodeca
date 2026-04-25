@@ -23,9 +23,16 @@ chrono = { version = "0.4", default-features = false, features = ["std", "clock"
 dashmap = "6"
 indexmap = "2"
 indextree = "4"
+im = "15"
 regex = "1.12"
+heck = "0.5"
 globset = "0.4"
 url = "2"
+
+# proc-macro dependencies (for picante-macros)
+proc-macro2 = "1"
+quote = "1"
+unsynn = "0.3"
 
 # Error handling
 ariadne = "0.5"
@@ -37,6 +44,7 @@ thiserror = "2.0"
 futures = "0.3"
 futures-channel = "0.3"
 futures-util = "0.3"
+parking_lot = "0.12"
 tokio = { version = "1.48", features = [
   "full",
   "macros",
@@ -46,6 +54,7 @@ tokio = { version = "1.48", features = [
   "sync",
   "time",
 ] }
+tokio-test-lite = "0.2"
 
 # HTTP/networking
 axum = { version = "0.8", features = ["ws"] }
@@ -74,6 +83,7 @@ hotmeal-server = { path = "crates/hotmeal-server", features = ["tracing"] }
 hotmeal-wasm = { path = "crates/hotmeal-wasm" }
 
 facet = "0.46"
+facet-core = "0.46"
 facet-default = "0.46"
 facet-format = "0.47"
 facet-json = "0.46"
@@ -81,6 +91,7 @@ facet-postcard = "0.46"
 facet-toml = "0.46"
 facet-value = "0.46"
 facet-yaml = "0.46"
+facet-reflect = "0.46"
 facet-testhelpers = "0.46"
 facet-error = "0.46"
 
@@ -91,6 +102,7 @@ figue = "2.0"
 
 # RPC framework (vox)
 vox = "0.4"
+vox-core = "0.4"
 vox-fdpass = "0.4"
 vox-local = "0.4"
 vox-websocket = "0.4"
@@ -100,8 +112,9 @@ ur-taking-me-with-you = { version = "7.3", features = [
   "tokio",
 ] }
 
-# Incremental computation
-picante = "1.0"
+# Incremental computation (inlined)
+picante = { path = "crates/picante" }
+picante-macros = { path = "crates/picante-macros" }
 
 # File system
 fs-err = "3"
@@ -117,6 +130,9 @@ owo-colors = "4"
 ratatui = "0.30"
 structstruck = "0.5"
 html-escape = "0.2"
+aasvg = "1.0"
+pikru = "1.2"
+arborium = { version = "2", default-features = false }
 
 # CSS processing
 lightningcss = { version = "1.0.0-alpha.68", features = ["visitor"] }
@@ -132,6 +148,7 @@ html5ever = "0.38"
 tendril = "0.5"
 divan = "0.1"
 datatest-stable = "0.3"
+trybuild = "1"
 
 # Image processing
 base64 = "0.22"
@@ -147,7 +164,7 @@ fontcull = { version = "2.0", default-features = false }
 pulldown-cmark = "0.13"
 arborium-theme = "2"
 html_parser = "0.7"
-marq = "2.2"
+marq = { path = "crates/marq" }
 vox-stream = "0.4"
 vox-types = "0.4"
 
@@ -178,7 +195,8 @@ web-sys = { version = "0.3", features = [
 ] }
 libc = "0.2"
 rapidhash = "4"
-strid = "8.0"
+strid = { path = "crates/strid" }
+strid-macros = { path = "crates/strid-macros" }
 # strid = { path = "../strid/crates/strid" }
 
 # Misc utilities
@@ -191,6 +209,7 @@ hakoniwa = "1.2"
 version = "0.6.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
+authors = ["bearcove"]
 repository = "https://github.com/bearcove/dodeca"
 homepage = "https://dodeca.bearcove.eu/"
 rust-version = "1.91"
