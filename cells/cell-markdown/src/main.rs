@@ -4,10 +4,10 @@
 //! Mermaid diagrams are rendered via callback to the host, which delegates to the mermaid cell.
 
 use cell_markdown_proto::*;
-use dodeca_cell_runtime::{ConnectionHandle, run_cell};
+use dodeca_cell_runtime::{Caller, run_cell};
 use marq::{
     AasvgHandler, ArboriumHandler, CompareHandler, InlineCodeHandler, LinkResolver, MermaidHandler,
-    PikruHandler, RenderOptions, TermHandler, render,
+    RenderOptions, TermHandler, render,
 };
 use std::future::Future;
 use std::pin::Pin;
@@ -65,8 +65,7 @@ impl LinkResolver for PassthroughLinkResolver {
     fn resolve<'a>(
         &'a self,
         link: &'a str,
-        _source_path: Option<&'a str>,
-    ) -> Pin<Box<dyn Future<Output = Option<String>> + Send + 'a>> {
+        _source_path: Option<&'a str>) -> Pin<Box<dyn Future<Output = Option<String>> + Send + 'a>> {
         Box::pin(async move {
             // Keep @/ links unchanged - dodeca will resolve them with site tree access
             if link.starts_with("@/") {
@@ -81,11 +80,11 @@ impl LinkResolver for PassthroughLinkResolver {
 
 #[derive(Clone)]
 pub struct MarkdownProcessorImpl {
-    _handle: Arc<OnceLock<ConnectionHandle>>,
+    _handle: Arc<OnceLock<Caller>>,
 }
 
 impl MarkdownProcessorImpl {
-    fn new(handle: Arc<OnceLock<ConnectionHandle>>) -> Self {
+    fn new(handle: Arc<OnceLock<Caller>>) -> Self {
         Self { _handle: handle }
     }
 }
@@ -93,9 +92,7 @@ impl MarkdownProcessorImpl {
 impl MarkdownProcessor for MarkdownProcessorImpl {
     async fn parse_frontmatter(
         &self,
-        _cx: &dodeca_cell_runtime::Context,
-        content: String,
-    ) -> FrontmatterResult {
+        content: String) -> FrontmatterResult {
         match marq::parse_frontmatter(&content) {
             Ok((fm, body)) => FrontmatterResult::Success {
                 frontmatter: convert_frontmatter(fm),
@@ -109,15 +106,12 @@ impl MarkdownProcessor for MarkdownProcessorImpl {
 
     async fn render_markdown(
         &self,
-        _cx: &dodeca_cell_runtime::Context,
         source_path: String,
-        markdown: String,
-    ) -> MarkdownResult {
+        markdown: String) -> MarkdownResult {
         // Configure marq with real handlers (no placeholders!)
         let opts = RenderOptions::new()
             .with_handler(&["aa", "aasvg"], AasvgHandler::new())
             .with_handler(&["compare"], CompareHandler::new())
-            .with_handler(&["pikchr"], PikruHandler::with_css_variables(true))
             .with_handler(&["term"], TermHandler::new())
             .with_handler(&["mermaid"], MermaidHandler::new())
             .with_default_handler(ArboriumHandler::new())
@@ -143,10 +137,8 @@ impl MarkdownProcessor for MarkdownProcessorImpl {
 
     async fn highlight_code(
         &self,
-        _cx: &dodeca_cell_runtime::Context,
         lang: String,
-        code: String,
-    ) -> HighlightResult {
+        code: String) -> HighlightResult {
         use marq::CodeBlockHandler;
 
         let handler = ArboriumHandler::new();
@@ -167,10 +159,8 @@ impl MarkdownProcessor for MarkdownProcessorImpl {
 
     async fn parse_and_render(
         &self,
-        cx: &dodeca_cell_runtime::Context,
         source_path: String,
-        content: String,
-    ) -> ParseResult {
+        content: String) -> ParseResult {
         // Parse frontmatter
         let (fm, body) = match marq::parse_frontmatter(&content) {
             Ok(result) => result,
@@ -183,7 +173,7 @@ impl MarkdownProcessor for MarkdownProcessorImpl {
 
         // Render markdown body
         match self
-            .render_markdown(cx, source_path, body.to_string())
+            .render_markdown(source_path, body.to_string())
             .await
         {
             MarkdownResult::Success {

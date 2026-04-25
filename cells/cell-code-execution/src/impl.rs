@@ -12,9 +12,7 @@ pub struct CodeExecutorImpl;
 impl CodeExecutor for CodeExecutorImpl {
     async fn extract_code_samples(
         &self,
-        _cx: &dodeca_cell_runtime::Context,
-        input: ExtractSamplesInput,
-    ) -> CodeExecutionResult {
+        input: ExtractSamplesInput) -> CodeExecutionResult {
         let options = Options::ENABLE_TABLES
             | Options::ENABLE_FOOTNOTES
             | Options::ENABLE_STRIKETHROUGH
@@ -79,9 +77,7 @@ impl CodeExecutor for CodeExecutorImpl {
 
     async fn execute_code_samples(
         &self,
-        _cx: &dodeca_cell_runtime::Context,
-        input: ExecuteSamplesInput,
-    ) -> CodeExecutionResult {
+        input: ExecuteSamplesInput) -> CodeExecutionResult {
         let mut results = Vec::new();
 
         if !input.config.enabled {
@@ -150,8 +146,7 @@ const EXECUTION_TIMEOUT_SECS: u64 = 300;
 
 async fn execute_code_sample(
     sample: &CodeSample,
-    _config: &CodeExecutionConfig,
-) -> ExecutionResult {
+    _config: &CodeExecutionConfig) -> ExecutionResult {
     use tokio::io::AsyncReadExt;
 
     let start_time = std::time::Instant::now();

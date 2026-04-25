@@ -18,9 +18,7 @@ pub struct ViteManagerImpl;
 impl ViteManager for ViteManagerImpl {
     async fn start_dev_server(
         &self,
-        _cx: &dodeca_cell_runtime::Context,
-        project_dir: String,
-    ) -> StartDevServerResult {
+        project_dir: String) -> StartDevServerResult {
         match start_dev_server_inner(Path::new(&project_dir)).await {
             Ok(port) => StartDevServerResult::Success { port },
             Err(e) => StartDevServerResult::Error {
@@ -31,9 +29,7 @@ impl ViteManager for ViteManagerImpl {
 
     async fn run_build(
         &self,
-        _cx: &dodeca_cell_runtime::Context,
-        project_dir: String,
-    ) -> RunBuildResult {
+        project_dir: String) -> RunBuildResult {
         match run_build_inner(Path::new(&project_dir)).await {
             Ok(()) => RunBuildResult::Success,
             Err(e) => RunBuildResult::Error {

@@ -19,35 +19,33 @@ use cell_html_proto::{
     CodeExecutionMetadata, HtmlProcessInput, HtmlProcessResult, HtmlProcessor,
     HtmlProcessorDispatcher, HtmlResult, Injection, ResponsiveImageInfo,
 };
-use dodeca_cell_runtime::{ConnectionHandle, run_cell};
+use dodeca_cell_runtime::{Caller, run_cell};
 
 /// HTML processor implementation
 #[derive(Clone)]
 pub struct HtmlProcessorImpl {
-    handle_cell: std::sync::Arc<std::sync::OnceLock<ConnectionHandle>>,
+    handle_cell: std::sync::Arc<std::sync::OnceLock<Caller>>,
 }
 
 impl HtmlProcessorImpl {
-    fn new(handle_cell: std::sync::Arc<std::sync::OnceLock<ConnectionHandle>>) -> Self {
+    fn new(handle_cell: std::sync::Arc<std::sync::OnceLock<Caller>>) -> Self {
         Self { handle_cell }
     }
 
-    fn handle(&self) -> &ConnectionHandle {
-        self.handle_cell.get().expect("handle not initialized yet")
+    fn caller(&self) -> &Caller {
+        self.handle_cell.get().expect("caller not initialized yet")
     }
 
     /// Get a client for calling back to the host
     fn host_client(&self) -> HostServiceClient {
-        HostServiceClient::new(self.handle().clone())
+        HostServiceClient::new(self.caller().clone())
     }
 }
 
 impl HtmlProcessor for HtmlProcessorImpl {
     async fn process(
         &self,
-        _cx: &dodeca_cell_runtime::Context,
-        input: HtmlProcessInput,
-    ) -> HtmlProcessResult {
+        input: HtmlProcessInput) -> HtmlProcessResult {
         let mut had_dead_links = false;
         let mut had_code_buttons = false;
 
@@ -156,10 +154,8 @@ impl HtmlProcessor for HtmlProcessorImpl {
 
     async fn rewrite_urls(
         &self,
-        _cx: &dodeca_cell_runtime::Context,
         html: String,
-        path_map: HashMap<String, String>,
-    ) -> HtmlResult {
+        path_map: HashMap<String, String>) -> HtmlResult {
         let tendril = StrTendril::from(html.as_str());
         let mut doc = hotmeal::parse(&tendril);
         rewrite_urls_in_doc(&mut doc, &path_map);
@@ -170,10 +166,8 @@ impl HtmlProcessor for HtmlProcessorImpl {
 
     async fn mark_dead_links(
         &self,
-        _cx: &dodeca_cell_runtime::Context,
         html: String,
-        known_routes: HashSet<String>,
-    ) -> HtmlResult {
+        known_routes: HashSet<String>) -> HtmlResult {
         let tendril = StrTendril::from(html.as_str());
         let mut doc = hotmeal::parse(&tendril);
         let had_dead = mark_dead_links_in_doc(&mut doc, &known_routes);
@@ -185,10 +179,8 @@ impl HtmlProcessor for HtmlProcessorImpl {
 
     async fn inject_code_buttons(
         &self,
-        _cx: &dodeca_cell_runtime::Context,
         html: String,
-        code_metadata: HashMap<String, CodeExecutionMetadata>,
-    ) -> HtmlResult {
+        code_metadata: HashMap<String, CodeExecutionMetadata>) -> HtmlResult {
         let tendril = StrTendril::from(html.as_str());
         let mut doc = hotmeal::parse(&tendril);
         let had_buttons = inject_code_buttons_in_doc(&mut doc, &code_metadata);
@@ -200,9 +192,7 @@ impl HtmlProcessor for HtmlProcessorImpl {
 
     async fn extract_links(
         &self,
-        _cx: &dodeca_cell_runtime::Context,
-        html: String,
-    ) -> cell_html_proto::ExtractedLinks {
+        html: String) -> cell_html_proto::ExtractedLinks {
         let tendril = StrTendril::from(html.as_str());
         let doc = hotmeal::parse(&tendril);
         cell_html_proto::ExtractedLinks {
@@ -338,8 +328,7 @@ fn collect_ids_recursive(doc: &Document, node_id: NodeId, ids: &mut Vec<String>)
 async fn process_inline_css_urls(
     host: &HostServiceClient,
     html: &str,
-    path_map: &HashMap<String, String>,
-) -> Result<String> {
+    path_map: &HashMap<String, String>) -> Result<String> {
     // Phase 1: Extract CSS content (sync)
     let css_to_process: Vec<(usize, String)> = {
         let tendril = StrTendril::from(html);
@@ -421,8 +410,7 @@ fn collect_inline_styles(
     doc: &Document,
     node_id: NodeId,
     results: &mut Vec<(usize, String)>,
-    start_idx: usize,
-) {
+    start_idx: usize) {
     if is_element(doc, node_id, "style") {
         let text = get_text_content(doc, node_id);
         if !text.trim().is_empty() {
@@ -439,8 +427,7 @@ fn apply_processed_styles(
     doc: &mut Document,
     node_id: NodeId,
     processed: &HashMap<usize, String>,
-    idx: &mut usize,
-) {
+    idx: &mut usize) {
     if is_element(doc, node_id, "style") {
         if let Some(proc_css) = processed.get(idx) {
             replace_text_content(doc, node_id, proc_css);
@@ -458,8 +445,7 @@ fn apply_processed_styles(
 async fn process_inline_js_urls(
     host: &HostServiceClient,
     html: &str,
-    path_map: &HashMap<String, String>,
-) -> Result<String> {
+    path_map: &HashMap<String, String>) -> Result<String> {
     // Phase 1: Extract JS content (sync)
     let js_to_process: Vec<(usize, String)> = {
         let tendril = StrTendril::from(html);
@@ -542,8 +528,7 @@ fn collect_inline_scripts(
     doc: &Document,
     node_id: NodeId,
     results: &mut Vec<(usize, String)>,
-    start_idx: usize,
-) {
+    start_idx: usize) {
     if is_element(doc, node_id, "script") && get_attr(doc, node_id, "src").is_none() {
         let text = get_text_content(doc, node_id);
         if !text.trim().is_empty() {
@@ -560,8 +545,7 @@ fn apply_processed_scripts(
     doc: &mut Document,
     node_id: NodeId,
     processed: &HashMap<usize, String>,
-    idx: &mut usize,
-) {
+    idx: &mut usize) {
     if is_element(doc, node_id, "script") && get_attr(doc, node_id, "src").is_none() {
         if let Some(proc_js) = processed.get(idx) {
             replace_text_content(doc, node_id, proc_js);
@@ -742,8 +726,7 @@ fn rewrite_urls_in_doc(doc: &mut Document, path_map: &HashMap<String, String>) {
 fn rewrite_urls_in_subtree(
     doc: &mut Document,
     node_id: NodeId,
-    path_map: &HashMap<String, String>,
-) {
+    path_map: &HashMap<String, String>) {
     // Collect children first to avoid borrow issues
     let children: Vec<NodeId> = doc.children(node_id).collect();
 
@@ -1014,8 +997,7 @@ fn resolve_relative_link(href: &str, base: &str) -> Option<String> {
 
 fn transform_images_in_doc(
     doc: &mut Document,
-    image_variants: &HashMap<String, ResponsiveImageInfo>,
-) {
+    image_variants: &HashMap<String, ResponsiveImageInfo>) {
     if image_variants.is_empty() {
         return;
     }
@@ -1036,8 +1018,7 @@ fn collect_images_with_variants<'a>(
     doc: &Document,
     node_id: NodeId,
     image_variants: &'a HashMap<String, ResponsiveImageInfo>,
-    results: &mut Vec<(NodeId, String, &'a ResponsiveImageInfo)>,
-) {
+    results: &mut Vec<(NodeId, String, &'a ResponsiveImageInfo)>) {
     if is_element(doc, node_id, "img")
         && let Some(src) = get_attr(doc, node_id, "src")
         && let Some(info) = image_variants.get(&src)
@@ -1054,8 +1035,7 @@ fn transform_img_to_picture(
     doc: &mut Document,
     img_id: NodeId,
     original_src: &str,
-    info: &ResponsiveImageInfo,
-) {
+    info: &ResponsiveImageInfo) {
     // Build srcset strings
     let jxl_srcset = build_srcset(&info.jxl_srcset);
     let webp_srcset = build_srcset(&info.webp_srcset);
@@ -1097,8 +1077,7 @@ fn transform_img_to_picture(
             &format!(
                 "background:url({}) center/cover no-repeat",
                 info.thumbhash_data_url
-            ),
-        );
+            ));
         set_attr(doc, img_id, "onload", "this.style.background='none'");
     }
 
@@ -1171,8 +1150,7 @@ fn collect_vite_entries_from_scripts(
     doc: &Document,
     node_id: NodeId,
     vite_css_map: &HashMap<String, Vec<String>>,
-    css_to_inject: &mut Vec<String>,
-) {
+    css_to_inject: &mut Vec<String>) {
     if is_element(doc, node_id, "script") {
         // Check for src attribute
         if let Some(src) = get_attr(doc, node_id, "src")
@@ -1201,8 +1179,7 @@ fn collect_vite_entries_from_scripts(
 fn extract_imports_from_js(
     js: &str,
     vite_css_map: &HashMap<String, Vec<String>>,
-    css_to_inject: &mut Vec<String>,
-) {
+    css_to_inject: &mut Vec<String>) {
     // Simple parser for: import ... from "path" or import ... from 'path'
     // This is not a full JS parser but handles common cases
     for line in js.lines() {
@@ -1248,8 +1225,7 @@ fn extract_imports_from_js(
 
 fn inject_code_buttons_in_doc(
     doc: &mut Document,
-    code_metadata: &HashMap<String, CodeExecutionMetadata>,
-) -> bool {
+    code_metadata: &HashMap<String, CodeExecutionMetadata>) -> bool {
     let mut had_buttons = false;
 
     if let Some(body_id) = doc.body() {
@@ -1270,8 +1246,7 @@ fn inject_code_buttons_in_doc(
                             doc,
                             node_id,
                             "style",
-                            &format!("position:relative;{}", existing_style),
-                        );
+                            &format!("position:relative;{}", existing_style));
                     }
 
                     // Create and append buttons
@@ -1377,8 +1352,7 @@ fn create_build_info_button(doc: &mut Document, meta: &CodeExecutionMetadata) ->
         doc,
         btn,
         "title",
-        &format!("Verified: {}", html_escape::encode_text(rustc_short)),
-    );
+        &format!("Verified: {}", html_escape::encode_text(rustc_short)));
 
     // Store metadata as data attribute for JS to use
     let json = metadata_to_json(meta);

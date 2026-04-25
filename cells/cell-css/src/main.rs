@@ -14,10 +14,8 @@ pub struct CssProcessorImpl;
 impl CssProcessor for CssProcessorImpl {
     async fn rewrite_and_minify(
         &self,
-        _cx: &dodeca_cell_runtime::Context,
         css: String,
-        path_map: std::collections::HashMap<String, String>,
-    ) -> cell_css_proto::CssResult {
+        path_map: std::collections::HashMap<String, String>) -> cell_css_proto::CssResult {
         // Parse the CSS
         let mut stylesheet = match StyleSheet::parse(&css, ParserOptions::default()) {
             Ok(s) => s,
@@ -66,8 +64,7 @@ impl<'i, 'a> lightningcss::visitor::Visitor<'i> for UrlRewriter<'a> {
 
     fn visit_url(
         &mut self,
-        url: &mut lightningcss::values::url::Url<'i>,
-    ) -> Result<(), Self::Error> {
+        url: &mut lightningcss::values::url::Url<'i>) -> Result<(), Self::Error> {
         let url_str = url.url.as_ref();
         if let Some(new_url) = self.path_map.get(url_str) {
             url.url = new_url.clone().into();

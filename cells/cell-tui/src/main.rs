@@ -214,8 +214,7 @@ impl TuiApp {
             Block::default()
                 .title(server_title)
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(FG_GUTTER)),
-        );
+                .border_style(Style::default().fg(FG_GUTTER)));
         frame.render_widget(urls_widget, chunks[0]);
 
         // Build progress
@@ -258,8 +257,7 @@ impl TuiApp {
             Block::default()
                 .title(" 🔨 Status ")
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(FG_GUTTER)),
-        );
+                .border_style(Style::default().fg(FG_GUTTER)));
         frame.render_widget(progress_widget, chunks[1]);
 
         // Events log
@@ -281,8 +279,7 @@ impl TuiApp {
             Block::default()
                 .title(" Activity ")
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(FG_GUTTER)),
-        );
+                .border_style(Style::default().fg(FG_GUTTER)));
         frame.render_widget(events_widget, chunks[2]);
 
         // Footer
@@ -329,8 +326,7 @@ impl TuiApp {
             x,
             y,
             input_width.min(area.width),
-            input_height.min(area.height),
-        );
+            input_height.min(area.height));
 
         frame.render_widget(Clear, input_area);
 
@@ -354,8 +350,7 @@ impl TuiApp {
                 Block::default()
                     .title(" 🔍 Log Filter (RUST_LOG syntax) ")
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(CYAN)),
-            )
+                    .border_style(Style::default().fg(CYAN)))
             .style(Style::default().bg(BG_DARK));
 
         frame.render_widget(input_widget, input_area);
@@ -372,8 +367,7 @@ impl TuiApp {
             x,
             y,
             help_width.min(area.width),
-            help_height.min(area.height),
-        );
+            help_height.min(area.height));
 
         frame.render_widget(Clear, help_area);
 
@@ -431,8 +425,7 @@ impl TuiApp {
                 Block::default()
                     .title(" ❓ Help ")
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(CYAN)),
-            )
+                    .border_style(Style::default().fg(CYAN)))
             .style(Style::default().bg(BG_DARK));
 
         frame.render_widget(help_widget, help_area);
@@ -451,14 +444,12 @@ fn format_event(e: &LogEvent, max_width: usize) -> Vec<Line<'static>> {
         // No fields - just message
         lines.push(Line::from(vec![Span::styled(
             e.message.clone(),
-            Style::default().fg(msg_color),
-        )]));
+            Style::default().fg(msg_color))]));
     } else {
         // Message + fields with smart wrapping
         let mut first_line_spans = vec![Span::styled(
             e.message.clone(),
-            Style::default().fg(msg_color),
-        )];
+            Style::default().fg(msg_color))];
 
         let mut current_line_len = e.message.chars().count();
         let indent = "    "; // continuation indent
@@ -569,15 +560,15 @@ struct TuiDisplayImpl {
 }
 
 impl TuiDisplay for TuiDisplayImpl {
-    async fn update_progress(&self, _cx: &dodeca_cell_runtime::Context, progress: BuildProgress) {
+    async fn update_progress(&self, progress: BuildProgress) {
         let _ = self.progress_tx.send(progress);
     }
 
-    async fn push_event(&self, _cx: &dodeca_cell_runtime::Context, event: LogEvent) {
+    async fn push_event(&self, event: LogEvent) {
         let _ = self.event_tx.send(event);
     }
 
-    async fn update_status(&self, _cx: &dodeca_cell_runtime::Context, status: ServerStatus) {
+    async fn update_status(&self, status: ServerStatus) {
         let _ = self.status_tx.send(status);
     }
 }
@@ -609,11 +600,10 @@ fn main() {
 }
 
 async fn run_tui_loop(
-    handle: Arc<OnceLock<ConnectionHandle>>,
+    handle: Arc<OnceLock<dodeca_cell_runtime::Caller>>,
     mut progress_rx: mpsc::UnboundedReceiver<BuildProgress>,
     mut events_rx: mpsc::UnboundedReceiver<LogEvent>,
-    mut status_rx: mpsc::UnboundedReceiver<ServerStatus>,
-) {
+    mut status_rx: mpsc::UnboundedReceiver<ServerStatus>) {
     if let Err(e) =
         run_tui_loop_inner(handle, &mut progress_rx, &mut events_rx, &mut status_rx).await
     {
@@ -622,11 +612,10 @@ async fn run_tui_loop(
 }
 
 async fn run_tui_loop_inner(
-    handle: Arc<OnceLock<ConnectionHandle>>,
+    handle: Arc<OnceLock<dodeca_cell_runtime::Caller>>,
     progress_rx: &mut mpsc::UnboundedReceiver<BuildProgress>,
     events_rx: &mut mpsc::UnboundedReceiver<LogEvent>,
-    status_rx: &mut mpsc::UnboundedReceiver<ServerStatus>,
-) -> Result<()> {
+    status_rx: &mut mpsc::UnboundedReceiver<ServerStatus>) -> Result<()> {
     // Wait for handle to be ready
     let handle = loop {
         if let Some(h) = handle.get() {

@@ -16,9 +16,7 @@ pub struct SassCompilerImpl;
 impl SassCompiler for SassCompilerImpl {
     async fn compile_sass(
         &self,
-        _cx: &dodeca_cell_runtime::Context,
-        input: SassInput,
-    ) -> SassResult {
+        input: SassInput) -> SassResult {
         let files = input.files;
 
         // Find main.scss
@@ -76,8 +74,7 @@ impl grass::Fs for InMemorySassFs {
         self.files.get(path).cloned().ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                format!("File not found: {path:?}"),
-            )
+                format!("File not found: {path:?}"))
         })
     }
 }

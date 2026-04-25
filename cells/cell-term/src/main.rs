@@ -16,9 +16,7 @@ pub struct TermRecorderImpl;
 impl TermRecorder for TermRecorderImpl {
     async fn record_interactive(
         &self,
-        _cx: &dodeca_cell_runtime::Context,
-        config: RecordConfig,
-    ) -> TermResult {
+        config: RecordConfig) -> TermResult {
         match recorder::record_session(None, config).await {
             Ok(html) => TermResult::Success { html },
             Err(e) => TermResult::Error {
@@ -29,10 +27,8 @@ impl TermRecorder for TermRecorderImpl {
 
     async fn record_command(
         &self,
-        _cx: &dodeca_cell_runtime::Context,
         command: String,
-        config: RecordConfig,
-    ) -> TermResult {
+        config: RecordConfig) -> TermResult {
         match recorder::record_session(Some(command), config).await {
             Ok(html) => TermResult::Success { html },
             Err(e) => TermResult::Error {

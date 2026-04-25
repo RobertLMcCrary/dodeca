@@ -13,10 +13,8 @@ pub struct DialoguerImpl;
 impl Dialoguer for DialoguerImpl {
     async fn select(
         &self,
-        _cx: &dodeca_cell_runtime::Context,
         prompt: String,
-        items: Vec<String>,
-    ) -> SelectResult {
+        items: Vec<String>) -> SelectResult {
         // Run the blocking dialoguer call in a blocking task
         let result = tokio::task::spawn_blocking(move || {
             Select::with_theme(&ColorfulTheme::default())
@@ -36,10 +34,8 @@ impl Dialoguer for DialoguerImpl {
 
     async fn confirm(
         &self,
-        _cx: &dodeca_cell_runtime::Context,
         prompt: String,
-        default: bool,
-    ) -> ConfirmResult {
+        default: bool) -> ConfirmResult {
         let result = tokio::task::spawn_blocking(move || {
             Confirm::with_theme(&ColorfulTheme::default())
                 .with_prompt(&prompt)

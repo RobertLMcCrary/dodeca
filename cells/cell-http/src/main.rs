@@ -21,7 +21,7 @@
 use std::sync::Arc;
 use std::sync::OnceLock;
 
-use dodeca_cell_runtime::{ConnectionHandle, run_cell};
+use dodeca_cell_runtime::{Caller, run_cell};
 
 use cell_host_proto::HostServiceClient;
 use cell_http_proto::TcpTunnelDispatcher;
@@ -33,26 +33,26 @@ mod vite;
 /// Trait for router context - allows lazy initialization
 pub trait RouterContext: Send + Sync + 'static {
     fn host_client(&self) -> HostServiceClient;
-    fn handle(&self) -> &ConnectionHandle;
+    fn caller(&self) -> &Caller;
 }
 
 /// Lazy context that wraps `OnceLock<ConnectionHandle>`
 struct LazyRouterContext {
-    handle_cell: Arc<OnceLock<ConnectionHandle>>,
+    handle_cell: Arc<OnceLock<Caller>>,
 }
 
 impl LazyRouterContext {
-    fn get_handle(&self) -> &ConnectionHandle {
-        self.handle_cell.get().expect("handle not initialized")
+    fn get_caller(&self) -> &Caller {
+        self.handle_cell.get().expect("caller not initialized")
     }
 }
 
 impl RouterContext for LazyRouterContext {
     fn host_client(&self) -> HostServiceClient {
-        HostServiceClient::new(self.get_handle().clone())
+        HostServiceClient::new(self.get_caller().clone())
     }
-    fn handle(&self) -> &ConnectionHandle {
-        self.get_handle()
+    fn caller(&self) -> &Caller {
+        self.get_caller()
     }
 }
 

@@ -12,7 +12,7 @@ use cell_host_proto::{
     CallFunctionResult, HostServiceClient, KeysAtResult, LoadTemplateResult, ResolveDataResult,
 };
 use dashmap::DashMap;
-use dodeca_cell_runtime::{ConnectionHandle, run_cell};
+use dodeca_cell_runtime::{Caller, run_cell};
 use facet_value::DestructuredRef;
 use futures::future::BoxFuture;
 use gingembre::{
@@ -93,8 +93,7 @@ impl RpcDataResolver {
 impl DataResolver for RpcDataResolver {
     fn resolve(
         &self,
-        path: &DataPath,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<Value>> + Send + '_>> {
+        path: &DataPath) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<Value>> + Send + '_>> {
         let path_segments = path.segments().to_vec();
         Box::pin(async move {
             match self
@@ -114,8 +113,7 @@ impl DataResolver for RpcDataResolver {
 
     fn keys_at(
         &self,
-        path: &DataPath,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<Vec<String>>> + Send + '_>> {
+        path: &DataPath) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<Vec<String>>> + Send + '_>> {
         let path_segments = path.segments().to_vec();
         Box::pin(async move {
             match self.client.keys_at(self.context_id, path_segments).await {
@@ -136,10 +134,9 @@ impl DataResolver for RpcDataResolver {
 
 /// Creates a function that calls back to the host via RPC.
 fn make_rpc_function(
-    handle: ConnectionHandle,
+    handle: Caller,
     context_id: ContextId,
-    name: String,
-) -> gingembre::GlobalFn {
+    name: String) -> gingembre::GlobalFn {
     Box::new(move |args: &[Value], kwargs: &[(String, Value)]| {
         let client = HostServiceClient::new(handle.clone());
         let name = name.clone();
@@ -223,20 +220,20 @@ fn to_protocol_template_error(err: &TemplateError, path_map: &PathMap) -> Templa
 /// Template renderer implementation
 #[derive(Clone)]
 pub struct TemplateRendererImpl {
-    handle_cell: std::sync::Arc<std::sync::OnceLock<ConnectionHandle>>,
+    handle_cell: std::sync::Arc<std::sync::OnceLock<Caller>>,
 }
 
 impl TemplateRendererImpl {
-    pub fn new(handle_cell: std::sync::Arc<std::sync::OnceLock<ConnectionHandle>>) -> Self {
+    pub fn new(handle_cell: std::sync::Arc<std::sync::OnceLock<Caller>>) -> Self {
         Self { handle_cell }
     }
 
-    fn handle(&self) -> &ConnectionHandle {
-        self.handle_cell.get().expect("handle not initialized yet")
+    fn caller(&self) -> &Caller {
+        self.handle_cell.get().expect("caller not initialized yet")
     }
 
     fn host_client(&self) -> HostServiceClient {
-        HostServiceClient::new(self.handle().clone())
+        HostServiceClient::new(self.caller().clone())
     }
 
     /// Build a render context from initial variables
@@ -244,8 +241,7 @@ impl TemplateRendererImpl {
         &self,
         initial_context: &Value,
         resolver: Arc<dyn DataResolver>,
-        context_id: ContextId,
-    ) -> Context {
+        context_id: ContextId) -> Context {
         let mut ctx = Context::new();
 
         // Set the data resolver for lazy data loading
@@ -268,7 +264,7 @@ impl TemplateRendererImpl {
             "registering RPC-backed functions"
         );
         for name in function_names {
-            let func = make_rpc_function(self.handle().clone(), context_id, name.to_string());
+            let func = make_rpc_function(self.caller().clone(), context_id, name.to_string());
             ctx.register_fn(name, func);
         }
 
@@ -298,11 +294,9 @@ impl TemplateRendererImpl {
 impl TemplateRenderer for TemplateRendererImpl {
     async fn render(
         &self,
-        _cx: &dodeca_cell_runtime::Context,
         context_id: ContextId,
         template_name: String,
-        initial_context: Value,
-    ) -> RenderResult {
+        initial_context: Value) -> RenderResult {
         // Create shared path map for tracking template name -> absolute path
         let path_map: PathMap = Arc::new(DashMap::new());
 
@@ -325,11 +319,9 @@ impl TemplateRenderer for TemplateRendererImpl {
 
     async fn eval_expression(
         &self,
-        _cx: &dodeca_cell_runtime::Context,
         context_id: ContextId,
         expression: String,
-        context: Value,
-    ) -> EvalResult {
+        context: Value) -> EvalResult {
         // Create RPC-backed resolver (no loader needed for expression eval)
         let resolver = Arc::new(RpcDataResolver::new(self.host_client(), context_id));
 
