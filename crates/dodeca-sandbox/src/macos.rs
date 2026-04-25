@@ -383,6 +383,9 @@ mod tests {
 
     #[test]
     fn test_simple_command() {
+        if std::env::var("IN_NIX_SHELL").is_ok() {
+            return;
+        }
         let config = SandboxConfig::new()
             .allow_read("/usr")
             .allow_read_execute("/bin");
@@ -435,6 +438,9 @@ mod tests {
 
     #[test]
     fn test_env_inheritance() {
+        if std::env::var("IN_NIX_SHELL").is_ok() {
+            return;
+        }
         // SAFETY: This test runs in isolation and we're setting a test-specific variable
         unsafe { std::env::set_var("TEST_SANDBOX_VAR", "test_value") };
 

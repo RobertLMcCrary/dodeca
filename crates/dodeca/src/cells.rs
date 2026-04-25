@@ -42,8 +42,6 @@ use cell_webp_proto::{WebPEncodeInput, WebPProcessorClient, WebPResult};
 use dashmap::DashMap;
 use facet::Facet;
 
-use vox_shm::driver::MultiPeerHostDriver;
-use vox_shm::{SegmentConfig, ShmHost};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
@@ -148,7 +146,7 @@ impl HostCellLifecycle {
 }
 
 impl CellLifecycle for HostCellLifecycle {
-    async fn ready(&self, _cx: &vox::RequestContext, msg: ReadyMsg) -> ReadyAck {
+    async fn ready(&self, msg: ReadyMsg) -> ReadyAck {
         let peer_id = msg.peer_id;
         let cell_name = msg.cell_name.clone();
         debug!("Cell {} (peer_id={}) is ready", cell_name, peer_id);
@@ -197,7 +195,7 @@ impl HostServiceImpl {
 
 impl HostService for HostServiceImpl {
     // Cell Lifecycle
-    async fn ready(&self, _cx: &vox::RequestContext, msg: ReadyMsg) -> ReadyAck {
+    async fn ready(&self, msg: ReadyMsg) -> ReadyAck {
         let peer_id = msg.peer_id;
         let cell_name = msg.cell_name.clone();
         debug!("Cell {} (peer_id={}) is ready", cell_name, peer_id);
@@ -217,37 +215,33 @@ impl HostService for HostServiceImpl {
     // Template Host
     async fn load_template(
         &self,
-        cx: &vox::RequestContext,
         context_id: ContextId,
         name: String,
     ) -> LoadTemplateResult {
         use cell_gingembre_proto::TemplateHost;
-        self.template_host.load_template(cx, context_id, name).await
+        self.template_host.load_template(context_id, name).await
     }
 
     async fn resolve_data(
         &self,
-        cx: &vox::RequestContext,
         context_id: ContextId,
         path: Vec<String>,
     ) -> ResolveDataResult {
         use cell_gingembre_proto::TemplateHost;
-        self.template_host.resolve_data(cx, context_id, path).await
+        self.template_host.resolve_data(context_id, path).await
     }
 
     async fn keys_at(
         &self,
-        cx: &vox::RequestContext,
         context_id: ContextId,
         path: Vec<String>,
     ) -> KeysAtResult {
         use cell_gingembre_proto::TemplateHost;
-        self.template_host.keys_at(cx, context_id, path).await
+        self.template_host.keys_at(context_id, path).await
     }
 
     async fn call_function(
         &self,
-        cx: &vox::RequestContext,
         context_id: ContextId,
         name: String,
         args: Vec<Value>,
@@ -255,16 +249,16 @@ impl HostService for HostServiceImpl {
     ) -> CallFunctionResult {
         use cell_gingembre_proto::TemplateHost;
         self.template_host
-            .call_function(cx, context_id, name, args, kwargs)
+            .call_function(context_id, name, args, kwargs)
             .await
     }
 
     // Content Service
-    async fn find_content(&self, cx: &vox::RequestContext, path: String) -> ServeContent {
+    async fn find_content(&self, path: String) -> ServeContent {
         if let Some(server) = &self.site_server {
             use cell_http_proto::ContentService;
             let content_service = crate::content_service::HostContentService::new(server.clone());
-            content_service.find_content(cx, path).await
+            content_service.find_content(path).await
         } else {
             ServeContent::NotFound {
                 html: "Not in serve mode".to_string(),
@@ -275,14 +269,13 @@ impl HostService for HostServiceImpl {
 
     async fn get_scope(
         &self,
-        cx: &vox::RequestContext,
         route: String,
         path: Vec<String>,
     ) -> Vec<ScopeEntry> {
         if let Some(server) = &self.site_server {
             use cell_http_proto::ContentService;
             let content_service = crate::content_service::HostContentService::new(server.clone());
-            content_service.get_scope(cx, route, path).await
+            content_service.get_scope(route, path).await
         } else {
             vec![]
         }
@@ -290,38 +283,36 @@ impl HostService for HostServiceImpl {
 
     async fn eval_expression(
         &self,
-        cx: &vox::RequestContext,
         route: String,
         expression: String,
     ) -> cell_host_proto::EvalResult {
         if let Some(server) = &self.site_server {
             use cell_http_proto::ContentService;
             let content_service = crate::content_service::HostContentService::new(server.clone());
-            content_service.eval_expression(cx, route, expression).await
+            content_service.eval_expression(route, expression).await
         } else {
             cell_host_proto::EvalResult::Err("Not in serve mode".to_string())
         }
     }
 
     // TUI Commands (TUI → Host)
-    async fn send_command(&self, _cx: &vox::RequestContext, command: ServerCommand) -> CommandResult {
+    async fn send_command(&self, command: ServerCommand) -> CommandResult {
         // Forward to Host singleton
         crate::host::Host::get().handle_tui_command(command)
     }
 
-    async fn quit(&self, _cx: &vox::RequestContext) {
+    async fn quit(&self) {
         crate::host::Host::get().signal_exit();
     }
 
     // Vite Integration
-    async fn get_vite_port(&self, _cx: &vox::RequestContext) -> Option<u16> {
+    async fn get_vite_port(&self) -> Option<u16> {
         crate::host::Host::get().get_vite_port()
     }
 
     // HTML Host callbacks
     async fn minify_css(
         &self,
-        _cx: &vox::RequestContext,
         css: String,
     ) -> cell_host_proto::MinifyCssResult {
         // Delegate to CSS cell for minification (empty path_map = minify only)
@@ -343,7 +334,7 @@ impl HostService for HostServiceImpl {
         }
     }
 
-    async fn minify_js(&self, _cx: &vox::RequestContext, js: String) -> cell_host_proto::MinifyJsResult {
+    async fn minify_js(&self, js: String) -> cell_host_proto::MinifyJsResult {
         // Delegate to JS cell for minification (using empty path_map for minify-only)
         match js_cell().await {
             Some(client) => {
@@ -366,7 +357,6 @@ impl HostService for HostServiceImpl {
 
     async fn process_inline_css(
         &self,
-        _cx: &vox::RequestContext,
         css: String,
         path_map: HashMap<String, String>,
     ) -> cell_host_proto::ProcessCssResult {
@@ -391,7 +381,6 @@ impl HostService for HostServiceImpl {
 
     async fn process_inline_js(
         &self,
-        _cx: &vox::RequestContext,
         js: String,
         path_map: HashMap<String, String>,
     ) -> cell_host_proto::ProcessJsResult {
@@ -555,221 +544,8 @@ async fn init_cells() -> CellRegistry {
 }
 
 async fn init_cells_inner() -> eyre::Result<()> {
-    use crate::host::PendingCell;
-
-    // Clean up stale SHM files from previous runs
-    #[cfg(unix)]
-    vox_shm::cleanup::cleanup_stale_shm_files("dodeca-shm")?;
-
-    // Create SHM path in /tmp/roam-shm/ directory
-    // The watchdog cleans up on exit, and we clean up stale files on startup
-    #[cfg(unix)]
-    let shm_path = vox_shm::cleanup::get_shm_path("dodeca-shm", std::process::id())?;
-
-    // On Windows, use regular temp dir (Auto cleanup via FILE_FLAG_DELETE_ON_CLOSE)
-    #[cfg(not(unix))]
-    let shm_path = std::env::temp_dir().join(format!("dodeca-shm-{}", std::process::id()));
-
-    // Configure segment for multi-cell architecture
-    // We have ~19 cells, so allocate for 24 guests with headroom.
-    // Keep 16MB max_payload for large images (decoded pixel data can be 30-50MB for high-res).
-    //
-    // Environment variable overrides (for debugging):
-    //   DODECA_SHM_MAX_GUESTS - max guests (default: 24)
-    //   DODECA_SHM_MAX_PAYLOAD_MB - max payload in MB (default: 16)
-    fn env_or<T: std::str::FromStr>(name: &str, default: T) -> T {
-        std::env::var(name)
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(default)
-    }
-
-    let max_payload_mb: u32 = env_or("DODECA_SHM_MAX_PAYLOAD_MB", 16);
-    let max_payload = (max_payload_mb as usize) * 1024 * 1024;
-    let max_guests: u32 = env_or("DODECA_SHM_MAX_GUESTS", 24);
-
-    debug!(
-        max_guests,
-        max_payload_mb, "SHM config (override with DODECA_SHM_* env vars)"
-    );
-
-    use vox_shm::SizeClass;
-    let config = SegmentConfig {
-        max_guests,
-        max_payload_size: max_payload as u32,
-        var_slot_classes: vec![
-            SizeClass::new(1024, 1024),            // 1 KB × 1024 (small RPC args)
-            SizeClass::new(16 * 1024, 256),        // 16 KB × 256 (typical payloads)
-            SizeClass::new(256 * 1024, 32),        // 256 KB × 32 (images, CSS)
-            SizeClass::new(max_payload as u32, 8), // max_payload × 8 (large blobs)
-        ],
-        // On Windows: FILE_FLAG_DELETE_ON_CLOSE deletes when all handles close (guests can still open)
-        // On Unix: Manual cleanup via Drop guard (unlink immediately breaks lazy spawning)
-        file_cleanup: if cfg!(windows) {
-            vox_shm::FileCleanup::Auto
-        } else {
-            vox_shm::FileCleanup::Manual
-        },
-        ..SegmentConfig::default()
-    };
-
-    // Create SHM host
-    let host = ShmHost::create(&shm_path, config)?;
-    debug!("init_cells_inner: SHM host created");
-
-    // Extract diagnostic view before host is moved into driver
-    let diagnostic_view = vox_shm::ShmDiagnosticView::from_host(&host);
-    dodeca_debug::register_diagnostic(move || {
-        let output = diagnostic_view.diagnostics().format();
-        if !output.is_empty() {
-            eprint!("{}", output);
-        }
-    });
-    debug!("init_cells_inner: SHM diagnostic view registered for SIGUSR1");
-
-    // On Unix: spawn watchdog and create .meta file
-    #[cfg(unix)]
-    {
-        vox_shm::cleanup::write_meta_file(&shm_path)?;
-        vox_shm::cleanup::spawn_watchdog(shm_path.clone())?;
-    }
-
-    // Find cell binary directory
-    let cell_dir = find_cell_directory()?;
-    debug!(cell_dir = %cell_dir.display(), "init_cells_inner: found cell directory");
-
-    // Collect cell metadata for lazy spawning (no peer_ids or tickets yet)
-    let mut cell_info: Vec<(&'static str, PathBuf, bool)> = Vec::new();
-    let mut missing_binaries: Vec<(&'static str, PathBuf)> = Vec::new();
-
-    // Check if TUI mode is enabled
-    let tui_enabled = crate::host::Host::get().is_tui_mode();
-
-    for cell_def in CELL_DEFS {
-        #[cfg(windows)]
-        let binary_name = format!("ddc-cell-{}.exe", cell_def.suffix);
-        #[cfg(not(windows))]
-        let binary_name = format!("ddc-cell-{}", cell_def.suffix);
-        let cell_name = cell_def.suffix; // Logical name (e.g., "gingembre", "html-diff")
-        let binary_path = cell_dir.join(&binary_name);
-
-        // Skip TUI cell if not in TUI mode
-        if cell_name == "tui" && !tui_enabled {
-            continue;
-        }
-
-        if !binary_path.exists() {
-            missing_binaries.push((cell_name, binary_path));
-            continue;
-        }
-
-        debug!(
-            "Registered {} cell for lazy spawn from {}",
-            cell_name,
-            binary_path.display()
-        );
-
-        cell_info.push((cell_name, binary_path, cell_def.inherit_stdio));
-    }
-
-    // If most cells are missing, installation is incomplete
-    let total_expected = cell_info.len() + missing_binaries.len();
-    if missing_binaries.len() > total_expected / 2 {
-        let missing_names: Vec<_> = missing_binaries.iter().map(|(n, _)| *n).collect();
-        return Err(eyre::eyre!(
-            "dodeca installation is incomplete.\n\n\
-            Missing {} of {} cell binaries: {}\n\n\
-            The cell binaries (ddc-cell-*) should be in the same directory as 'ddc'.\n\
-            Please reinstall dodeca or download a complete release.",
-            missing_binaries.len(),
-            total_expected,
-            missing_names.join(", ")
-        ));
-    } else if !missing_binaries.is_empty() {
-        // Only a few missing - warn but continue
-        let names: Vec<_> = missing_binaries.iter().map(|(n, _)| *n).collect();
-        warn!("Some cell binaries not found: {:?}", names);
-    }
-
-    // Build driver with NO peers initially (lazy spawning)
-    let builder = MultiPeerHostDriver::builder(host);
-    let (driver, _handles, _incoming_connections, driver_handle) = builder.build();
-    debug!("init_cells_inner: driver built with no peers (lazy spawning enabled)");
-
-    // Store driver handle for dynamic peer creation
-    crate::host::Host::get().set_driver_handle(driver_handle);
-
-    // Store cell metadata as pending cells (will create peers on first access)
-    for (cell_name, binary_path, inherit_stdio) in cell_info {
-        debug!(
-            cell = cell_name,
-            "init_cells_inner: registering pending cell"
-        );
-
-        let pending = PendingCell {
-            binary_path,
-            inherit_stdio,
-        };
-        crate::host::Host::get().register_pending_cell(cell_name.to_string(), pending);
-    }
-
-    debug!("init_cells_inner: spawning driver task");
-
-    // Spawn driver task
-    let driver_handle = crate::spawn::spawn(async move {
-        debug!("MultiPeerHostDriver: starting (lazy spawning mode)");
-        debug!("[driver task] before driver.run()");
-
-        let result = driver.run().await;
-
-        debug!("[driver task] after driver.run(), result={:?}", result);
-
-        match result {
-            Ok(()) => {
-                // Driver exited cleanly - this means control channel was disconnected
-                // AND no peers were left
-                error!(
-                    "MultiPeerHostDriver: exited cleanly - control channel disconnected with no peers"
-                );
-            }
-            Err(e) => {
-                error!("MultiPeerHostDriver: exited with error: {:?}", e);
-            }
-        }
-    });
-
-    // Also spawn a watchdog that checks if driver task panics
-    crate::spawn::spawn(async move {
-        match driver_handle.await {
-            Ok(()) => {
-                error!("MultiPeerHostDriver task completed normally (this shouldn't happen early)");
-            }
-            Err(e) if e.is_panic() => {
-                error!("MultiPeerHostDriver task PANICKED: {:?}", e);
-                std::process::exit(1);
-            }
-            Err(e) if e.is_cancelled() => {
-                error!("MultiPeerHostDriver task was cancelled");
-            }
-            Err(e) => {
-                error!("MultiPeerHostDriver task failed: {:?}", e);
-            }
-        }
-    });
-
-    // Spawn tracing consumer task (receives records from cells)
-    if let Some(mut tracing_rx) = crate::host::Host::get().take_tracing_receiver() {
-        crate::spawn::spawn(async move {
-            debug!("Tracing consumer: starting");
-            while let Some(tagged) = tracing_rx.recv().await {
-                // Dispatch through the host's tracing subscriber
-                tracing::dispatch_record(&tagged);
-            }
-            debug!("Tracing consumer: channel closed");
-        });
-    }
-
-    debug!("init_cells_inner: complete");
+    // SHM-based cell infrastructure was removed during the vox migration.
+    // Cells are currently not spawned/managed by the host in this transitional build.
     Ok(())
 }
 

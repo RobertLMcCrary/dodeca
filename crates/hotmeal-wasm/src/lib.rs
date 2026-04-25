@@ -33,9 +33,8 @@ use web_sys::{Document, Element, Node};
 /// Call this once at startup.
 #[wasm_bindgen]
 pub fn init_tracing() {
-    let mut config = wasm_tracing::WasmLayerConfig::default();
-    config.set_max_level(tracing::Level::TRACE);
-    let _ = wasm_tracing::set_as_global_default_with_config(config);
+    let config = wasm_tracing::WASMLayerConfig::default();
+    wasm_tracing::set_as_global_default_with_config(config);
 }
 
 // Re-export patch types for reference

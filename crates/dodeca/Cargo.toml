@@ -73,6 +73,7 @@ open.workspace = true
 owo-colors.workspace = true
 picante.workspace = true
 vox.workspace = true
+vox-core.workspace = true
 tracing.workspace = true
 vox-fdpass.workspace = true
 vox-local.workspace = true

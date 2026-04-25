@@ -8,7 +8,7 @@
 pub use cell_host_proto::{HostServiceClient, ReadyMsg};
 pub use dodeca_debug;
 pub use vox;
-pub use vox::{ConnectionHandle, RequestContext};
+pub use vox::{Caller, ConnectionHandle, RequestContext};
 pub use tokio;
 pub use tracing;
 pub use tracing_subscriber;
@@ -32,7 +32,7 @@ macro_rules! cell_debug {
 
 /// Run a cell with the given name and dispatcher factory.
 ///
-/// The dispatcher factory receives an `Arc<OnceLock<ConnectionHandle>>` that can be used
+/// The dispatcher factory receives an `Arc<OnceLock<Caller>>` that can be used
 /// to create clients for calling back to the host. Cells that don't need callbacks
 /// can ignore this parameter.
 ///
@@ -65,7 +65,7 @@ macro_rules! cell_debug {
 macro_rules! run_cell {
     ($cell_name:expr, |$handle:ident| $make_dispatcher:expr) => {{
         use tracing_subscriber::prelude::*;
-        use $crate::{ConnectionHandle, dodeca_debug, tokio, tracing, tracing_subscriber, ur_taking_me_with_you};
+        use $crate::{Caller, dodeca_debug, tokio, tracing, tracing_subscriber, ur_taking_me_with_you};
 
         $crate::cell_debug!(
             "[cell-{}] starting (pid={})",
@@ -105,7 +105,7 @@ macro_rules! run_cell {
 
             // Let user code create the dispatcher with access to handle
             // We use an Arc<OnceLock> pattern
-            let handle_cell: std::sync::Arc<std::sync::OnceLock<ConnectionHandle>> =
+            let handle_cell: std::sync::Arc<std::sync::OnceLock<Caller>> =
                 std::sync::Arc::new(std::sync::OnceLock::new());
 
             let $handle = handle_cell.clone();
@@ -113,15 +113,23 @@ macro_rules! run_cell {
             let user_dispatcher = $make_dispatcher;
             $crate::cell_debug!("[cell] user dispatcher created");
 
-            // With vox 0.4, we keep the user's dispatcher as-is here; tracing is handled
-            // by standard `tracing_subscriber` output for now.
-            let combined_dispatcher = user_dispatcher;
-            $crate::cell_debug!("[cell] diagnostics disabled (no SHM transport)");
-            // NOTE: SHM-based transport was removed to keep the dependency graph on crates.io.
-            // Cells will be re-wired to use vox-local / vox-stream transports by the host.
-            // For now, this runtime just constructs the dispatcher so the workspace compiles.
-            let _ = combined_dispatcher;
-            let _ = handle_cell;
+            // Serve the cell over vox local transport.
+            let endpoint = std::env::var("DODECA_CELL_ENDPOINT")
+                .map_err(|_| "missing DODECA_CELL_ENDPOINT (expected local socket/pipe path)")?;
+            let addr = format!("local://{endpoint}");
+
+            let cell_name = format!("ddc-cell-{}", $cell_name);
+            let pid = std::process::id();
+
+            let host_acceptor = $crate::combined_acceptor(
+                cell_name.clone(),
+                pid,
+                handle_cell.clone(),
+                user_dispatcher,
+            );
+
+            $crate::cell_debug!("[cell] serving at {}", addr);
+            $crate::vox::serve(addr, host_acceptor).await?;
             Ok(())
         }
 
@@ -131,4 +139,70 @@ macro_rules! run_cell {
             .expect("Failed to create tokio runtime")
             .block_on(__run_cell_async())
     }};
+}
+
+pub fn combined_acceptor<D>(
+    cell_name: String,
+    pid: u32,
+    handle_cell: std::sync::Arc<std::sync::OnceLock<vox::Caller>>,
+    dispatcher: D,
+) -> impl vox_core::ConnectionAcceptor
+where
+    D: vox_types::Handler<vox::DriverReplySink> + Clone + Send + Sync + 'static,
+{
+    use vox_core::{ConnectionAcceptor, ConnectionRequest, PendingConnection};
+
+    #[derive(Clone)]
+    struct CellAcceptor<D> {
+        cell_name: String,
+        pid: u32,
+        handle_cell: std::sync::Arc<std::sync::OnceLock<vox::Caller>>,
+        dispatcher: D,
+    }
+
+    impl<D> ConnectionAcceptor for CellAcceptor<D>
+    where
+        D: vox_types::Handler<vox::DriverReplySink> + Clone + Send + Sync + 'static,
+    {
+        fn accept(
+            &self,
+            _request: &ConnectionRequest,
+            connection: PendingConnection,
+        ) -> Result<(), vox_types::Metadata<'static>> {
+            let dispatcher = self.dispatcher.clone();
+            let cell_name = self.cell_name.clone();
+            let pid = self.pid;
+            let handle_cell = self.handle_cell.clone();
+
+            let handle = connection.into_handle();
+            let mut driver = vox::Driver::new(handle, dispatcher);
+            let caller = vox::Caller::new(driver.caller());
+            let _ = handle_cell.set(caller.clone());
+
+            tokio::spawn(async move {
+                // Signal readiness to host (best-effort)
+                let host = crate::HostServiceClient::new(caller.clone());
+                let _ = host
+                    .ready(crate::ReadyMsg {
+                        peer_id: 0,
+                        cell_name,
+                        pid: Some(pid),
+                        version: None,
+                        features: vec![],
+                    })
+                    .await;
+
+                driver.run().await;
+            });
+
+            Ok(())
+        }
+    }
+
+    CellAcceptor {
+        cell_name,
+        pid,
+        handle_cell,
+        dispatcher,
+    }
 }

@@ -299,18 +299,7 @@ fn main() -> Result<()> {
     dodeca_debug::install_sigusr1_handler("ddc");
 
     // Register diagnostic callback to dump all RPC connection states
-    dodeca_debug::register_diagnostic(|| {
-        let diagnostics = vox::session::diagnostic::dump_all_diagnostics();
-        eprint!("{}", diagnostics);
-    });
-
-    // Register diagnostic callback to dump all auditable channel states
-    dodeca_debug::register_diagnostic(|| {
-        let channels = vox_shm::dump_all_channels();
-        if !channels.is_empty() {
-            eprint!("{}", channels);
-        }
-    });
+    dodeca_debug::register_diagnostic(|| {});
 
     // When spawned by test harness with DODECA_DIE_WITH_PARENT=1, install death-watch
     // so we exit when the test process dies. This prevents orphan accumulation.
@@ -344,12 +333,10 @@ async fn async_main(command: Command) -> Result<()> {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
             loop {
                 interval.tick().await;
-                let diagnostics = vox::session::diagnostic::dump_all_diagnostics();
-                let channels = vox_shm::dump_all_channels();
-                if diagnostics.is_empty() && channels.is_empty() {
+                if false {
                     eprintln!("[SHM_DEBUG] (idle)");
                 } else {
-                    eprint!("{}{}", diagnostics, channels);
+                    // diagnostics disabled
                 }
             }
         });
@@ -1402,7 +1389,7 @@ pub async fn build(
             }
             OutputFile::Gopher { route, content } => {
                 let mut path = route_to_path(output_dir, route);
-                if path.file_name() == Some(std::ffi::OsStr::new("index.html")) {
+                if path.file_name() == Some("index.html") {
                     path.set_file_name("gophermap");
                 } else if path.extension() == Some("html") {
                     path.set_extension("txt");
@@ -3346,7 +3333,7 @@ async fn serve_static(
     }
 
     impl ContentService for StaticContentService {
-        async fn find_content(&self, _cx: &vox::RequestContext, path: String) -> ServeContent {
+        async fn find_content(&self, path: String) -> ServeContent {
             // Normalize path - remove leading slash
             let path = path.trim_start_matches('/');
 
@@ -3408,7 +3395,6 @@ async fn serve_static(
 
         async fn get_scope(
             &self,
-            _cx: &vox::RequestContext,
             _route: String,
             _path: Vec<String>,
         ) -> Vec<cell_http_proto::ScopeEntry> {
@@ -3417,7 +3403,6 @@ async fn serve_static(
 
         async fn eval_expression(
             &self,
-            _cx: &vox::RequestContext,
             _route: String,
             _expression: String,
         ) -> cell_http_proto::EvalResult {

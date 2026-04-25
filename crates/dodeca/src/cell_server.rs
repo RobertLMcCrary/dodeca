@@ -12,8 +12,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Instant;
 
 use eyre::Result;
-use vox::tunnel_pair;
-use vox_shm::driver::IncomingConnections;
+// NOTE: Tunnel helpers + SHM incoming connections were removed during vox migration.
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::sync::watch;
@@ -88,15 +87,15 @@ impl DevtoolsService for HostDevtoolsService {
     /// via BrowserService::on_event() on the browser's virtual connection.
     ///
     /// The browser was already registered when its virtual connection was accepted.
-    /// This method associates the subscription with the browser using `cx.conn_id`.
-    async fn subscribe(&self, cx: &vox::RequestContext, route: String) {
-        let conn_id = cx.conn_id().raw();
-        tracing::info!(conn_id, route = %route, "devtools: client subscribing to route");
-        self.server.set_browser_route(conn_id, route);
+    async fn subscribe(&self, route: String) {
+        // TODO: restore per-connection routing once the host keeps track of a
+        // connection identifier in the updated vox session API.
+        tracing::info!(route = %route, "devtools: client subscribing to route");
+        self.server.set_browser_route(0, route);
     }
 
     /// Get scope entries for the current route.
-    async fn get_scope(&self, _cx: &vox::RequestContext, path: Option<Vec<String>>) -> Vec<ScopeEntry> {
+    async fn get_scope(&self, path: Option<Vec<String>>) -> Vec<ScopeEntry> {
         // Use "/" as default route - the client should call subscribe() first
         // to establish which route they're viewing
         let path = path.unwrap_or_default();
@@ -106,7 +105,6 @@ impl DevtoolsService for HostDevtoolsService {
     /// Evaluate an expression in a snapshot's context.
     async fn eval(
         &self,
-        _cx: &vox::RequestContext,
         snapshot_id: String,
         expression: String,
     ) -> EvalResult {
@@ -121,7 +119,7 @@ impl DevtoolsService for HostDevtoolsService {
     }
 
     /// Dismiss an error notification.
-    async fn dismiss_error(&self, _cx: &vox::RequestContext, route: String) {
+    async fn dismiss_error(&self, route: String) {
         tracing::debug!(route = %route, "Client dismissed error via RPC");
         // The existing implementation just logs this - errors are resolved
         // when the template successfully re-renders
@@ -386,6 +384,12 @@ async fn handle_browser_connection(
     mut browser_stream: TcpStream,
     server: Arc<SiteServer>,
 ) -> Result<()> {
+    let _ = (conn_id, &mut browser_stream, server);
+    // TODO: restore browser tunneling via a supported vox transport.
+    Ok(())
+}
+
+/*
     let started_at = Instant::now();
     let peer_addr = browser_stream.peer_addr().ok();
     let local_addr = browser_stream.local_addr().ok();
@@ -418,78 +422,10 @@ async fn handle_browser_connection(
         "Revision ready (per-connection)"
     );
 
-    // Create a tunnel pair - local stays here, remote goes to cell
-    let (local, remote) = tunnel_pair();
-    let channel_id = local.tx.channel_id();
-
-    // Open a tunnel to the cell by passing the remote end
-    let open_started = Instant::now();
-    tunnel_client
-        .open(remote)
-        .await
-        .map_err(|e| eyre::eyre!("Failed to open tunnel: {:?}", e))?;
-
-    tracing::trace!(
-        conn_id,
-        channel_id,
-        open_elapsed_ms = open_started.elapsed().as_millis(),
-        "Tunnel opened for browser connection"
-    );
-
-    // Bridge browser <-> tunnel
-    // Create a duplex to bridge the tunnel
-    let (client, server_stream) = tokio::io::duplex(64 * 1024);
-    let (_read_handle, _write_handle) =
-        vox::tunnel_stream(client, local, vox::DEFAULT_TUNNEL_CHUNK_SIZE);
-
-    tracing::trace!(
-        conn_id,
-        channel_id,
-        "Starting browser <-> tunnel bridge task"
-    );
-
-    // Use the server side of the duplex for the browser connection
-    let mut tunnel_stream = server_stream;
-    crate::spawn::spawn(async move {
-        let bridge_started = Instant::now();
-        tracing::trace!(conn_id, channel_id, "browser <-> tunnel bridge: start");
-        match tokio::io::copy_bidirectional(&mut browser_stream, &mut tunnel_stream).await {
-            Ok((to_tunnel, to_browser)) => {
-                tracing::trace!(
-                    conn_id,
-                    channel_id,
-                    to_tunnel,
-                    to_browser,
-                    elapsed_ms = bridge_started.elapsed().as_millis(),
-                    "browser <-> tunnel finished"
-                );
-            }
-            Err(e) => {
-                tracing::warn!(
-                    conn_id,
-                    channel_id,
-                    error = %e,
-                    elapsed_ms = bridge_started.elapsed().as_millis(),
-                    "browser <-> tunnel error"
-                );
-            }
-        }
-        tracing::trace!(
-            conn_id,
-            channel_id,
-            elapsed_ms = bridge_started.elapsed().as_millis(),
-            "browser <-> tunnel bridge: done"
-        );
-    });
-
-    tracing::trace!(
-        conn_id,
-        channel_id,
-        elapsed_ms = started_at.elapsed().as_millis(),
-        "handle_browser_connection: end"
-    );
+    // (tunneling disabled)
     Ok(())
 }
+*/
 
 // ============================================================================
 // Browser Virtual Connection Handling
@@ -501,10 +437,14 @@ async fn handle_browser_connection(
 /// through cell-http to the host. This function accepts those connections and
 /// registers them with the SiteServer for receiving devtools events.
 pub async fn accept_browser_connections(
-    mut incoming: IncomingConnections,
+    mut incoming: (),
     server: Arc<SiteServer>,
 ) {
-    tracing::info!("Starting browser virtual connection acceptor");
+    let _ = (&mut incoming, server);
+    tracing::info!("Browser virtual connection acceptor disabled (no SHM transport)");
+}
+
+/*
 
     while let Some(conn) = incoming.recv().await {
         tracing::debug!("Received incoming virtual connection from browser");
@@ -533,3 +473,4 @@ pub async fn accept_browser_connections(
 
     tracing::info!("Browser virtual connection acceptor finished");
 }
+*/

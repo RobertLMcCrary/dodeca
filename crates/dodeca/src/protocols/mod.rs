@@ -10,7 +10,7 @@ pub use html::HtmlHandler;
 pub use gemini::GeminiHandler;
 pub use gopher::GopherHandler;
 
-pub trait ProtocolHandler {
+pub trait ProtocolHandler: Send + Sync {
     fn protocol_name(&self) -> &'static str;
     fn generate(
         &self,

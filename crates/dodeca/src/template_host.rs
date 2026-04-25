@@ -117,7 +117,6 @@ impl Default for TemplateHostImpl {
 impl TemplateHost for TemplateHostImpl {
     async fn load_template(
         &self,
-        _cx: &vox::RequestContext,
         context_id: ContextId,
         name: String,
     ) -> LoadTemplateResult {
@@ -171,7 +170,6 @@ impl TemplateHost for TemplateHostImpl {
 
     async fn resolve_data(
         &self,
-        _cx: &vox::RequestContext,
         context_id: ContextId,
         path: Vec<String>,
     ) -> ResolveDataResult {
@@ -230,7 +228,6 @@ impl TemplateHost for TemplateHostImpl {
 
     async fn keys_at(
         &self,
-        _cx: &vox::RequestContext,
         context_id: ContextId,
         path: Vec<String>,
     ) -> KeysAtResult {
@@ -282,7 +279,6 @@ impl TemplateHost for TemplateHostImpl {
 
     async fn call_function(
         &self,
-        _cx: &vox::RequestContext,
         context_id: ContextId,
         name: String,
         args: Vec<Value>,

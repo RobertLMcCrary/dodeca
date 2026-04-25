@@ -16,6 +16,8 @@ rustdoc-args = ["--html-in-header", "arborium-header.html"]
 cell-host-proto = { path = "../../cells/cell-host-proto" }
 dodeca-debug = { path = "../dodeca-debug" }
 vox.workspace = true
+vox-types.workspace = true
+vox-core.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
