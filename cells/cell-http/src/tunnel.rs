@@ -6,7 +6,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use roam::{DEFAULT_TUNNEL_CHUNK_SIZE, Tunnel, tunnel_stream};
+use vox::{DEFAULT_TUNNEL_CHUNK_SIZE, Tunnel, tunnel_stream};
 
 use cell_http_proto::TcpTunnel;
 

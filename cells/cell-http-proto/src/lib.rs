@@ -8,13 +8,24 @@
 //!
 //! Tunnels use roam's `Tunnel` type - a pair of `Tx<Vec<u8>>` and `Rx<Vec<u8>>`
 //! channels for bidirectional byte streaming. The caller creates a tunnel pair
-//! with `roam::tunnel_pair()`, passes one half via RPC, and uses the other locally.
+//! with `vox::tunnel_pair()`, passes one half via RPC, and uses the other locally.
 
 use facet::Facet;
-use roam::Tunnel;
+use vox::{Rx, Tx};
 
 // Re-export types from dodeca-protocol that are used in the RPC interface
 pub use dodeca_protocol::{EvalResult, ScopeEntry, ScopeValue};
+
+/// A bidirectional byte tunnel for proxying a TCP stream over RPC.
+///
+/// This is implemented using two vox channels:
+/// - `tx`: local → remote bytes
+/// - `rx`: remote → local bytes
+#[derive(Facet)]
+pub struct Tunnel {
+    pub tx: Tx<Vec<u8>>,
+    pub rx: Rx<Vec<u8>>,
+}
 
 /// TCP tunnel service implemented by the cell.
 ///
@@ -28,7 +39,7 @@ pub use dodeca_protocol::{EvalResult, ScopeEntry, ScopeValue};
 /// 4. Cell pumps `remote` ↔ internal HTTP server
 /// 5. Host pumps `local` ↔ browser TCP socket
 #[allow(async_fn_in_trait)]
-#[roam::service]
+#[vox::service]
 pub trait TcpTunnel {
     /// Open a new bidirectional TCP tunnel.
     ///
@@ -71,7 +82,7 @@ pub enum ServeContent {
 ///
 /// The cell calls these methods to get content from the host's picante DB.
 #[allow(async_fn_in_trait)]
-#[roam::service]
+#[vox::service]
 pub trait ContentService {
     /// Find content for a given path (HTML, CSS, static files, devtools assets)
     async fn find_content(&self, path: String) -> crate::ServeContent;
