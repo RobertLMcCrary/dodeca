@@ -88,6 +88,11 @@ pub struct SyntaxHighlightConfig {
 #[derive(Debug, Clone, Default, Facet)]
 #[facet(rename_all = "snake_case")]
 pub struct LinkCheckConfig {
+    /// Enable or disable build-time link checking.
+    /// Defaults to true when omitted.
+    #[facet(default)]
+    pub enabled: Option<bool>,
+
     /// Domains to skip checking (anti-bot policies, known flaky, etc.)
     #[facet(default)]
     pub skip_domains: Option<Vec<String>>,

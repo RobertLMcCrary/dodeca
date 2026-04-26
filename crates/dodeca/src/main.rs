@@ -92,6 +92,10 @@ struct BuildArgs {
     /// Show TUI progress display
     #[facet(args::named)]
     tui: bool,
+
+    /// Disable build-time link checking
+    #[facet(args::named)]
+    no_link_check: bool,
 }
 
 /// Serve command arguments
@@ -240,6 +244,7 @@ enum Command {
 struct ResolvedBuildConfig {
     content_dir: Utf8PathBuf,
     output_dir: Utf8PathBuf,
+    link_check_enabled: bool,
     skip_domains: Vec<String>,
     rate_limit_ms: Option<u64>,
     stable_assets: Vec<String>,
@@ -261,6 +266,7 @@ fn resolve_dirs(
         return Ok(ResolvedBuildConfig {
             content_dir: c.clone(),
             output_dir: o.clone(),
+            link_check_enabled: true,
             skip_domains: vec![],
             rate_limit_ms: None,
             stable_assets: vec![],
@@ -283,6 +289,7 @@ fn resolve_dirs(
             Ok(ResolvedBuildConfig {
                 content_dir,
                 output_dir,
+                link_check_enabled: cfg.link_check_enabled,
                 skip_domains: cfg.skip_domains,
                 rate_limit_ms: cfg.rate_limit_ms,
                 stable_assets: cfg.stable_assets,
@@ -353,16 +360,22 @@ async fn async_main(command: Command) -> Result<()> {
             let project_dir = cfg.content_dir.parent().unwrap_or(&cfg.content_dir);
             vite::maybe_run_vite_build(project_dir.as_std_path()).await?;
 
+            let link_check = if args.no_link_check || !cfg.link_check_enabled {
+                LinkCheckOptions::None
+            } else {
+                LinkCheckOptions::Full {
+                    skip_domains: cfg.skip_domains.clone(),
+                    rate_limit_ms: cfg.rate_limit_ms,
+                }
+            };
+
             let options = BuildOptions {
                 render_options: render::RenderOptions {
                     livereload: false,
                     dev_mode: false,
                 },
                 progress: None,
-                link_check: LinkCheckOptions::Full {
-                    skip_domains: cfg.skip_domains,
-                    rate_limit_ms: cfg.rate_limit_ms,
-                },
+                link_check,
             };
 
             build(&cfg.content_dir, &cfg.output_dir, options).await?;

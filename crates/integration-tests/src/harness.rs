@@ -1173,6 +1173,19 @@ impl BuildResult {
         );
         self
     }
+
+    /// Assert the build output (stdout + stderr) does not contain a string
+    pub fn assert_output_not_contains(&self, needle: &str) -> &Self {
+        let combined = format!("{}{}", self.stdout, self.stderr);
+        assert!(
+            !combined.contains(needle),
+            "Build output should not contain '{}' but does.\nstdout:\n{}\nstderr:\n{}",
+            needle,
+            self.stdout,
+            self.stderr
+        );
+        self
+    }
 }
 
 /// Helper for creating test sites from inline content
@@ -1244,12 +1257,17 @@ impl InlineSite {
 
     /// Build this site (sync version for standalone test runner)
     pub fn build(&self) -> BuildResult {
-        build_site_from_source_sync(&self.fixture_dir)
+        build_site_from_source_sync(&self.fixture_dir, &[])
+    }
+
+    /// Build this site with extra `ddc build` arguments.
+    pub fn build_with_args(&self, extra_args: &[&str]) -> BuildResult {
+        build_site_from_source_sync(&self.fixture_dir, extra_args)
     }
 }
 
 /// Build a site from an arbitrary source directory (sync version)
-fn build_site_from_source_sync(src: &Path) -> BuildResult {
+fn build_site_from_source_sync(src: &Path, extra_args: &[&str]) -> BuildResult {
     // Create isolated temp directory
     let temp_dir = tempfile::Builder::new()
         .prefix("dodeca-build-test-")
@@ -1278,7 +1296,9 @@ fn build_site_from_source_sync(src: &Path) -> BuildResult {
     let fixture_str = fixture_dir.to_string_lossy().to_string();
     let ddc = ddc_binary();
     let mut cmd = StdCommand::new(&ddc);
-    cmd.args(["build", &fixture_str]);
+    cmd.arg("build");
+    cmd.args(extra_args);
+    cmd.arg(&fixture_str);
 
     // Set cell path if provided via env var
     if let Some(cell_dir) = cell_path() {

@@ -124,6 +124,8 @@ pub struct ResolvedConfig {
     pub output_dir: Utf8PathBuf,
     /// Domains to skip during external link checking
     pub skip_domains: Vec<String>,
+    /// Whether build-time link checking is enabled
+    pub link_check_enabled: bool,
     /// Rate limit for external link checking (milliseconds between requests to same domain)
     pub rate_limit_ms: Option<u64>,
     /// Asset paths that should be served at original paths (no cache-busting)
@@ -282,6 +284,12 @@ fn load_config(config_path: &Utf8Path) -> Result<ResolvedConfig> {
         .and_then(|lc| lc.skip_domains.clone())
         .unwrap_or_default();
 
+    let link_check_enabled = config
+        .link_check
+        .as_ref()
+        .and_then(|lc| lc.enabled)
+        .unwrap_or(true);
+
     // Extract rate limit
     let rate_limit_ms = config.link_check.as_ref().and_then(|lc| lc.rate_limit_ms);
 
@@ -315,6 +323,7 @@ fn load_config(config_path: &Utf8Path) -> Result<ResolvedConfig> {
         content_dir,
         output_dir,
         skip_domains,
+        link_check_enabled,
         rate_limit_ms,
         stable_assets,
         code_execution: config.code_execution.unwrap_or_default(),

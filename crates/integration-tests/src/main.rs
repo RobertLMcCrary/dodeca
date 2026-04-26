@@ -695,6 +695,31 @@ fn collect_tests() -> Vec<Test> {
             func: picante_cache::navigating_twice_should_not_recompute_queries,
             ignored: false,
         },
+        // protocols tests
+        Test {
+            name: "gemini_output_generated_for_enabled_protocol",
+            module: "protocols",
+            func: protocols::gemini_output_generated_for_enabled_protocol,
+            ignored: false,
+        },
+        Test {
+            name: "gopher_output_generated_for_enabled_protocol",
+            module: "protocols",
+            func: protocols::gopher_output_generated_for_enabled_protocol,
+            ignored: false,
+        },
+        Test {
+            name: "link_check_can_be_disabled_in_config",
+            module: "protocols",
+            func: protocols::link_check_can_be_disabled_in_config,
+            ignored: false,
+        },
+        Test {
+            name: "link_check_can_be_disabled_via_cli_flag",
+            module: "protocols",
+            func: protocols::link_check_can_be_disabled_via_cli_flag,
+            ignored: false,
+        },
         // code_execution tests
         Test {
             name: "test_successful_code_sample_shows_output",
