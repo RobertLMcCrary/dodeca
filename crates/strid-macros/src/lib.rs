@@ -9,6 +9,11 @@
     unused_imports,
     unused_qualifications
 )]
+#![allow(
+    clippy::needless_lifetimes,
+    clippy::result_large_err,
+    clippy::useless_conversion
+)]
 #![deny(
     missing_debug_implementations,
     trivial_casts,

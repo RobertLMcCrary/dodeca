@@ -1756,6 +1756,7 @@ dependencies = [
  "facet-postcard",
  "facet-value",
  "vox",
+ "vox-types",
 ]
 
 [[package]]
@@ -8945,8 +8946,6 @@ dependencies = [
 [[package]]
 name = "vox-core"
 version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7698d68fc31e8a107319f2f70fc22d7056c4bb0c4cac1b812e678b71d412c740"
 dependencies = [
  "facet 0.46.0",
  "facet-cbor",

@@ -15,6 +15,7 @@ rustdoc-args = ["--html-in-header", "arborium-header.html"]
 
 [dependencies]
 thiserror.workspace = true
+tempfile.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 hakoniwa.workspace = true

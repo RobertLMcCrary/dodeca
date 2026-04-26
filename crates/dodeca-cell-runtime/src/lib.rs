@@ -7,12 +7,12 @@
 
 pub use cell_host_proto::{HostServiceClient, ReadyMsg};
 pub use dodeca_debug;
-pub use vox;
-pub use vox::{Caller, ConnectionHandle, RequestContext};
 pub use tokio;
 pub use tracing;
 pub use tracing_subscriber;
 pub use ur_taking_me_with_you;
+pub use vox;
+pub use vox::{Caller, ConnectionHandle, RequestContext, facet};
 
 /// Debug print macro that only prints when cell-debug feature is enabled
 #[macro_export]
@@ -65,7 +65,9 @@ macro_rules! cell_debug {
 macro_rules! run_cell {
     ($cell_name:expr, |$handle:ident| $make_dispatcher:expr) => {{
         use tracing_subscriber::prelude::*;
-        use $crate::{Caller, dodeca_debug, tokio, tracing, tracing_subscriber, ur_taking_me_with_you};
+        use $crate::{
+            Caller, dodeca_debug, tokio, tracing, tracing_subscriber, ur_taking_me_with_you,
+        };
 
         $crate::cell_debug!(
             "[cell-{}] starting (pid={})",
@@ -150,7 +152,47 @@ pub fn combined_acceptor<D>(
 where
     D: vox_types::Handler<vox::DriverReplySink> + Clone + Send + Sync + 'static,
 {
+    use std::sync::Arc;
     use vox_core::{ConnectionAcceptor, ConnectionRequest, PendingConnection};
+
+    /// Wrapper that forces `RetryPolicy::IDEM` so the driver won't engage
+    /// operation-id tracking / operation-store serialization paths.
+    ///
+    /// This avoids crashes when the client includes `vox-operation-id` metadata
+    /// but responses are still in `Payload::Value` form.
+    #[derive(Clone)]
+    struct ForceIdem<H> {
+        inner: H,
+    }
+
+    impl<H> vox_types::Handler<vox::DriverReplySink> for ForceIdem<H>
+    where
+        H: vox_types::Handler<vox::DriverReplySink>,
+    {
+        fn retry_policy(&self, _method_id: vox_types::MethodId) -> vox_types::RetryPolicy {
+            vox_types::RetryPolicy::IDEM
+        }
+
+        fn args_have_channels(&self, method_id: vox_types::MethodId) -> bool {
+            self.inner.args_have_channels(method_id)
+        }
+
+        fn response_wire_shape(
+            &self,
+            method_id: vox_types::MethodId,
+        ) -> Option<&'static facet::Shape> {
+            self.inner.response_wire_shape(method_id)
+        }
+
+        fn handle(
+            &self,
+            call: vox_types::SelfRef<vox_types::RequestCall<'static>>,
+            reply: vox::DriverReplySink,
+            schemas: Arc<vox_types::SchemaRecvTracker>,
+        ) -> impl std::future::Future<Output = ()> + vox_types::MaybeSend + '_ {
+            self.inner.handle(call, reply, schemas)
+        }
+    }
 
     #[derive(Clone)]
     struct CellAcceptor<D> {
@@ -169,19 +211,23 @@ where
             _request: &ConnectionRequest,
             connection: PendingConnection,
         ) -> Result<(), vox_types::Metadata<'static>> {
-            let dispatcher = self.dispatcher.clone();
+            let dispatcher = ForceIdem {
+                inner: self.dispatcher.clone(),
+            };
             let cell_name = self.cell_name.clone();
             let pid = self.pid;
             let handle_cell = self.handle_cell.clone();
 
-            let handle = connection.into_handle();
-            let mut driver = vox::Driver::new(handle, dispatcher);
-            let caller = vox::Caller::new(driver.caller());
-            let _ = handle_cell.set(caller.clone());
+            // IMPORTANT: vox-core requires the *root* connection acceptor to call `handle_with`
+            // (or `handle_with_client`) so the session builder can retrieve the root Caller.
+            //
+            // We use `handle_with_client` so we can also get a HostServiceClient for callbacks.
+            let host: crate::HostServiceClient = connection.handle_with_client(dispatcher);
+
+            // Generated clients expose their caller handle (used for callbacks to host).
+            let _ = handle_cell.set(host.caller.clone());
 
             tokio::spawn(async move {
-                // Signal readiness to host (best-effort)
-                let host = crate::HostServiceClient::new(caller.clone());
                 let _ = host
                     .ready(crate::ReadyMsg {
                         peer_id: 0,
@@ -191,8 +237,6 @@ where
                         features: vec![],
                     })
                     .await;
-
-                driver.run().await;
             });
 
             Ok(())

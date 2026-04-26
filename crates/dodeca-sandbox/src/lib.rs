@@ -66,7 +66,12 @@ mod tests {
         // the sandbox's isolated tmpfs mount on Linux.
         //
         // In Nix builds, $HOME can be "/homeless-shelter" and may not exist; avoid relying on it.
-        let base = std::env::current_dir()?.join(".dodeca-sandbox-tests");
+        // Prefer a temp location outside the repo/workspace so Cargo won't pick up
+        // workspace-level `.cargo/config.toml` from ancestor directories.
+        #[cfg(target_os = "linux")]
+        let base = std::path::PathBuf::from("/var/tmp").join("dodeca-sandbox-tests");
+        #[cfg(not(target_os = "linux"))]
+        let base = std::env::temp_dir().join("dodeca-sandbox-tests");
         std::fs::create_dir_all(&base)?;
         let temp_dir = tempfile::tempdir_in(&base)?;
         let project_dir = temp_dir.path();
@@ -99,7 +104,8 @@ edition = "2021"
         ?;
 
         // Avoid touching the network in tests. This project has no deps.
-        std::env::set_var("CARGO_NET_OFFLINE", "true");
+        // SAFETY: test-local env var change in isolated process
+        unsafe { std::env::set_var("CARGO_NET_OFFLINE", "true") };
 
         // Get paths from environment
         let home_dir = std::env::var("HOME").unwrap_or_else(|_| base.to_string_lossy().into());
@@ -154,15 +160,22 @@ edition = "2021"
         };
 
         // Configure sandbox for cargo build - platform specific paths
-        let config = SandboxConfig::new()
+        let mut config = SandboxConfig::new()
             // Rust toolchain (read + execute)
             .allow_read_execute(&rustup_home)
             .allow_read_execute(&cargo_home)
             .allow_read_execute(&toolchain_bin)
+            // Cargo itself may live outside CARGO_HOME (e.g. Nix profiles)
+            .allow_execute(&cargo_path)
             // Project directory (read + write for build artifacts)
             .allow_full(project_dir)
             // Deny network (we've already fetched dependencies)
             .deny_network();
+
+        // If cargo_path is a symlink, sandbox-exec may apply rules to the resolved target.
+        if let Ok(resolved) = std::fs::canonicalize(&cargo_path) {
+            config = config.allow_execute(resolved);
+        }
 
         // Platform-specific paths
         #[cfg(target_os = "macos")]
@@ -187,6 +200,9 @@ edition = "2021"
                 // System paths needed for compilation
                 .allow_read_execute("/usr")
                 .allow_read_execute("/bin")
+                // Nix-provided toolchains and their dynamic libs
+                .allow_read_execute("/nix/store")
+                .allow_read_execute("/etc/profiles")
                 // SSL/TLS configuration
                 .allow_read("/private/etc")
                 // xcode-select symlinks

@@ -591,6 +591,17 @@ async fn spawn_cell_process(cell_name: &str, pending: PendingCell, quiet_mode: b
     match connect_result {
         Ok(client) => {
             Host::get().register_cell_client(cell_name.to_string(), client);
+            // In the vox-based transport, a successful session establish is sufficient
+            // to consider the cell "ready" for RPC. The legacy readiness handshake
+            // may not occur (or may be routed differently), so mark ready here.
+            let pid = child.id().map(|p| p as u32);
+            crate::cells::cell_ready_registry().mark_ready(cell_host_proto::ReadyMsg {
+                peer_id: 0,
+                cell_name: cell_name.to_string(),
+                pid,
+                version: None,
+                features: vec![],
+            });
         }
         Err(e) => {
             error!(cell = cell_name, error = ?e, "Failed to connect to cell endpoint");

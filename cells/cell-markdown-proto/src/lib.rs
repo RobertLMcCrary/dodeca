@@ -52,6 +52,14 @@ mod tests {
             other => panic!("expected object, got {:?}", other),
         }
     }
+
+    #[test]
+    fn test_vox_schema_plan_for_wire_parse_result() {
+        use core::convert::Infallible;
+        let shape =
+            <Result<ParseResult, vox::VoxError<Infallible>> as vox::facet::Facet>::SHAPE;
+        vox_types::SchemaSendTracker::plan_for_shape(shape).expect("schema plan should succeed");
+    }
 }
 
 // ============================================================================

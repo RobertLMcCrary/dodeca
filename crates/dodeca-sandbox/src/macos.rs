@@ -155,11 +155,38 @@ impl<'a> Command<'a> {
                 .push_str("(allow file-read* file-write* (regex #\"^/private/var/folders/.*\"))\n");
         }
 
+        fn escape_sbpl_regex_literal(s: &str) -> String {
+            // Escape for use inside an SBPL regex string: (regex #"<HERE>")
+            // We need to escape regex metacharacters and also backslash/quote for SBPL string.
+            let mut out = String::with_capacity(s.len() * 2);
+            for ch in s.chars() {
+                match ch {
+                    '\\' => out.push_str("\\\\"),
+                    '"' => out.push_str("\\\""),
+                    // Regex metacharacters
+                    '.' | '^' | '$' | '*' | '+' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '|' => {
+                        out.push('\\');
+                        out.push(ch);
+                    }
+                    _ => out.push(ch),
+                }
+            }
+            out
+        }
+
         // Add configured paths
         for (path, access) in &self.config.paths {
             let path_str = path.to_string_lossy();
             // Escape special characters for SBPL
             let escaped_path = escape_sbpl_path(&path_str);
+            // For exec allowlists, use a simple prefix regex. Avoid more complex
+            // constructs (groups / '?') because sandbox-exec's regex dialect is limited.
+            let mut exec_prefix = path_str.to_string();
+            if !exec_prefix.ends_with('/') {
+                exec_prefix.push('/');
+            }
+            let escaped_prefix = escape_sbpl_regex_literal(&exec_prefix);
+            let exec_prefix_regex = format!("^{}.*", escaped_prefix);
 
             match access {
                 PathAccess::Read => {
@@ -182,7 +209,7 @@ impl<'a> Command<'a> {
                         "(allow file-read* (subpath \"{escaped_path}\"))\n"
                     ));
                     profile.push_str(&format!(
-                        "(allow process-exec (subpath \"{escaped_path}\"))\n"
+                        "(allow process-exec (regex #\"{exec_prefix_regex}\"))\n"
                     ));
                 }
                 PathAccess::Full => {
@@ -190,7 +217,7 @@ impl<'a> Command<'a> {
                         "(allow file-read* file-write* (subpath \"{escaped_path}\"))\n"
                     ));
                     profile.push_str(&format!(
-                        "(allow process-exec (subpath \"{escaped_path}\"))\n"
+                        "(allow process-exec (regex #\"{exec_prefix_regex}\"))\n"
                     ));
                 }
             }
@@ -204,10 +231,6 @@ impl<'a> Command<'a> {
             profile.push_str("(allow network-inbound)\n");
         }
 
-        // Allow POSIX shared memory and semaphores (needed by many programs)
-        profile.push_str("(allow ipc-posix-shm-read-data)\n");
-        profile.push_str("(allow ipc-posix-shm-write-data)\n");
-
         profile
     }
 
@@ -216,10 +239,19 @@ impl<'a> Command<'a> {
         // Generate the sandbox profile
         let profile = self.generate_profile();
 
-        // Create a temporary file for the profile
-        let profile_path = std::env::temp_dir().join(format!("sandbox-{}.sb", process::id()));
-        std::fs::write(&profile_path, &profile)
+        // Create a unique temporary file for the profile.
+        // (Using only process::id() is racy across concurrent commands/tests.)
+        let mut tmp = tempfile::Builder::new()
+            .prefix("dodeca-sandbox-")
+            .suffix(".sb")
+            .tempfile_in(std::env::temp_dir())
+            .map_err(|e| Error::ProfileGeneration(format!("failed to create profile file: {e}")))?;
+        use std::io::Write as _;
+        tmp.write_all(profile.as_bytes())
             .map_err(|e| Error::ProfileGeneration(format!("failed to write profile: {e}")))?;
+        let (_file, profile_path) = tmp
+            .keep()
+            .map_err(|e| Error::ProfileGeneration(format!("failed to persist profile file: {e}")))?;
 
         // Build the sandbox-exec command
         let mut cmd = process::Command::new("/usr/bin/sandbox-exec");
@@ -266,7 +298,9 @@ impl<'a> Command<'a> {
         };
 
         // Clean up the profile file
-        let _ = std::fs::remove_file(&profile_path);
+        if std::env::var("DODECA_KEEP_SANDBOX_PROFILE").is_err() {
+            let _ = std::fs::remove_file(&profile_path);
+        }
 
         Ok(Output {
             status: ExitStatus {

@@ -96,7 +96,7 @@ impl CellReadyRegistry {
         }
     }
 
-    fn mark_ready(&self, msg: ReadyMsg) {
+    pub(crate) fn mark_ready(&self, msg: ReadyMsg) {
         // Normalize: cells report with underscores (code_execution) but we use hyphens (code-execution)
         let cell_name = msg.cell_name.replace('_', "-");
         debug!(
@@ -544,8 +544,39 @@ async fn init_cells() -> CellRegistry {
 }
 
 async fn init_cells_inner() -> eyre::Result<()> {
-    // SHM-based cell infrastructure was removed during the vox migration.
-    // Cells are currently not spawned/managed by the host in this transitional build.
+    // Register all cells for lazy spawning.
+    //
+    // The actual spawn happens on first access via `Host::client_async::<C>()`,
+    // which calls `Host::spawn_pending_cell()` when needed.
+    let cell_dir = find_cell_directory()?;
+
+    for def in CELL_DEFS {
+        let mut binary_path = cell_dir.join(format!("ddc-cell-{}", def.suffix));
+        // Windows support (even if not officially targeted, keep behavior predictable)
+        if !binary_path.exists() && cfg!(windows) {
+            binary_path = cell_dir.join(format!("ddc-cell-{}.exe", def.suffix));
+        }
+
+        if !binary_path.exists() {
+            // Don't fail init if some optional cells are missing; they'll surface
+            // as "cell not available" when accessed.
+            tracing::warn!(
+                cell = def.suffix,
+                binary = %binary_path.display(),
+                "Cell binary not found; cell will be unavailable"
+            );
+            continue;
+        }
+
+        crate::host::Host::get().register_pending_cell(
+            def.suffix.to_string(),
+            crate::host::PendingCell {
+                binary_path,
+                inherit_stdio: def.inherit_stdio,
+            },
+        );
+    }
+
     Ok(())
 }
 
