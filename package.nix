@@ -13,7 +13,15 @@
   apple-sdk ? null,
 }:
 
-rustPlatform.buildRustPackage (finalAttrs: {
+let
+  wasmBindgenCliVersion = "0.2.108";
+  wasmBindgenCliSrc = fetchCrate {
+    pname = "wasm-bindgen-cli";
+    version = wasmBindgenCliVersion;
+    hash = "sha256-UsuxILm1G6PkmVw0I/JF12CRltAfCJQFOaT4hFwvR8E=";
+  };
+in
+rustPlatform.buildRustPackage {
   pname = "dodeca";
   version = "0.6.1";
 
@@ -29,19 +37,11 @@ rustPlatform.buildRustPackage (finalAttrs: {
     pkg-config
     cmake
     (buildWasmBindgenCli {
-      src = fetchCrate {
-        pname = "wasm-bindgen-cli";
-        version = "0.2.108";
-        hash = "sha256-UsuxILm1G6PkmVw0I/JF12CRltAfCJQFOaT4hFwvR8E=";
-      };
+      src = wasmBindgenCliSrc;
       cargoDeps = rustPlatform.fetchCargoVendor {
-        src = fetchCrate {
-          pname = "wasm-bindgen-cli";
-          version = "0.2.108";
-          hash = "sha256-UsuxILm1G6PkmVw0I/JF12CRltAfCJQFOaT4hFwvR8E=";
-        };
+        src = wasmBindgenCliSrc;
         pname = "wasm-bindgen-cli";
-        version = "0.2.108";
+        version = wasmBindgenCliVersion;
         hash = "sha256-iqQiWbsKlLBiJFeqIYiXo3cqxGLSjNM8SOWXGM9u43E=";
       };
     })
@@ -79,4 +79,4 @@ rustPlatform.buildRustPackage (finalAttrs: {
     mainProgram = "ddc";
     platforms = platforms.unix;
   };
-})
+}
