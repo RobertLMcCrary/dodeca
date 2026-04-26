@@ -1,0 +1,33 @@
+[[integration]]
+name = "claude-code"
+remote = """claude mcp add --scope user --transport http context7 https://mcp.context7.com/mcp --header "CONTEXT7_API_KEY: YOUR_API_KEY\""""
+local = "claude mcp add --scope user context7 -- npx -y @upstash/context7-mcp --api-key YOUR_API_KEY"
+
+[[integration]]
+name = "opencode"
+remote = """[mcp_servers.context7]
+url = "https://mcp.context7.com/mcp"
+http_headers = { "CONTEXT7_API_KEY" = "YOUR_API_KEY" }"""
+local = """[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp", "--api-key", "YOUR_API_KEY"]"""
+
+[[integration]]
+name = "cursor"
+remote = """{"mcpServers":{"context7":{"serverUrl":"https://mcp.context7.com/mcp","headers":{"CONTEXT7_API_KEY":"YOUR_API_KEY"}}}}"""
+local = """{"mcpServers":{"context7":{"command":"npx","args":["-y","@upstash/context7-mcp","--api-key","YOUR_API_KEY"]}}}"""
+
+[[integration]]
+name = "codex"
+remote = """{"mcpServers":{"context7":{"serverUrl":"https://mcp.context7.com/mcp","headers":{"CONTEXT7_API_KEY":"YOUR_API_KEY"}}}}"""
+local = """{"mcpServers":{"context7":{"command":"npx","args":["-y","@upstash/context7-mcp","--api-key","YOUR_API_KEY"]}}}"""
+
+[[integration]]
+name = "vscode"
+remote = """{"mcp":{"servers":{"context7":{"type":"http","url":"https://mcp.context7.com/mcp","headers":{"CONTEXT7_API_KEY":"YOUR_API_KEY"}}}}}"""
+local = """{"mcp":{"servers":{"context7":{"type":"stdio","command":"npx","args":["-y","@upstash/context7-mcp","--api-key","YOUR_API_KEY"]}}}}"""
+
+[[integration]]
+name = "windsurf"
+remote = """{"mcpServers":{"context7":{"serverUrl":"https://mcp.context7.com/mcp","headers":{"CONTEXT7_API_KEY":"YOUR_API_KEY"}}}}"""
+local = """{"mcpServers":{"context7":{"command":"npx","args":["-y","@upstash/context7-mcp","--api-key","YOUR_API_KEY"]}}}"""

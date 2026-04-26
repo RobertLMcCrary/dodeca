@@ -187,9 +187,9 @@ pub fn apply_patches_postcard_on(
 mod live_reload {
     use super::*;
     use hotmeal_server::{LiveReloadBrowser, LiveReloadBrowserDispatcher, LiveReloadServiceClient};
-    use vox_websocket::WsLink;
     use std::cell::RefCell;
     use std::rc::Rc;
+    use vox_websocket::WsLink;
 
     /// Browser-side implementation of the `LiveReloadBrowser` service.
     ///
@@ -298,7 +298,8 @@ mod live_reload {
         let (done_tx, done_rx) = futures_channel::oneshot::channel::<()>();
         let done_tx = Rc::new(RefCell::new(Some(done_tx)));
         let done_tx_spawn = done_tx.clone();
-        let (client, _session_handle) = vox::acceptor(link)
+        let client = vox::acceptor_on(link)
+            .on_connection(dispatcher)
             .spawn_fn(move |fut| {
                 let done_tx_spawn = done_tx_spawn.clone();
                 wasm_bindgen_futures::spawn_local(async move {
@@ -308,7 +309,7 @@ mod live_reload {
                     }
                 });
             })
-            .establish::<LiveReloadServiceClient>(dispatcher)
+            .establish::<LiveReloadServiceClient>()
             .await?;
 
         log("[hotmeal-wasm] roam session established");

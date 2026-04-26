@@ -18,11 +18,11 @@ use std::time::Duration;
 use cell_gingembre_proto::ContextId;
 use cell_host_proto::{CommandResult, ServerCommand};
 use dashmap::DashMap;
-use vox_core::NoopClient;
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::process::Command;
 use tokio::sync::{Mutex, Notify, mpsc};
 use tracing::{debug, error, info, warn};
+use vox_core::NoopClient;
 
 use crate::template_host::RenderContext;
 
@@ -722,9 +722,7 @@ async fn wait_for_cell_ready(cell_name: &str) {
                 %reason,
                 "Cell process failed during startup"
             );
-            eprintln!(
-                "Cell process failed during startup (cell={cell_name}): {reason}"
-            );
+            eprintln!("Cell process failed during startup (cell={cell_name}): {reason}");
             // Give stdio pump tasks time to flush cell's stderr (e.g., panic messages)
             tokio::time::sleep(Duration::from_millis(200)).await;
             return;

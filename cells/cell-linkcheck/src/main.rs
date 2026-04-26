@@ -66,7 +66,8 @@ impl LinkCheckerImpl {
             .get(url)
             .header(
                 "Accept",
-                "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            )
             .build();
 
         let request = match request {
@@ -148,9 +149,7 @@ impl LinkCheckerImpl {
 }
 
 impl LinkChecker for LinkCheckerImpl {
-    async fn check_links(
-        &self,
-        input: LinkCheckInput) -> LinkCheckResult {
+    async fn check_links(&self, input: LinkCheckInput) -> LinkCheckResult {
         let mut results: HashMap<String, LinkStatus> = HashMap::new();
         let mut last_request_per_domain: HashMap<String, tokio::time::Instant> = HashMap::new();
         let delay = Duration::from_millis(input.delay_ms);

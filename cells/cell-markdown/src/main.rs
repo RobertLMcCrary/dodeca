@@ -65,7 +65,8 @@ impl LinkResolver for PassthroughLinkResolver {
     fn resolve<'a>(
         &'a self,
         link: &'a str,
-        _source_path: Option<&'a str>) -> Pin<Box<dyn Future<Output = Option<String>> + Send + 'a>> {
+        _source_path: Option<&'a str>,
+    ) -> Pin<Box<dyn Future<Output = Option<String>> + Send + 'a>> {
         Box::pin(async move {
             // Keep @/ links unchanged - dodeca will resolve them with site tree access
             if link.starts_with("@/") {
@@ -90,12 +91,13 @@ impl MarkdownProcessorImpl {
 }
 
 impl MarkdownProcessor for MarkdownProcessorImpl {
-    async fn parse_frontmatter(
-        &self,
-        content: String) -> FrontmatterResult {
+    async fn parse_frontmatter(&self, content: String) -> FrontmatterResult {
         match marq::parse_frontmatter(&content) {
             Ok((fm, body)) => FrontmatterResult::Success {
-                frontmatter: convert_frontmatter(fm),
+                frontmatter: match convert_frontmatter(fm) {
+                    Ok(frontmatter) => frontmatter,
+                    Err(message) => return FrontmatterResult::Error { message },
+                },
                 body: body.to_string(),
             },
             Err(e) => FrontmatterResult::Error {
@@ -104,10 +106,7 @@ impl MarkdownProcessor for MarkdownProcessorImpl {
         }
     }
 
-    async fn render_markdown(
-        &self,
-        source_path: String,
-        markdown: String) -> MarkdownResult {
+    async fn render_markdown(&self, source_path: String, markdown: String) -> MarkdownResult {
         // Configure marq with real handlers (no placeholders!)
         let opts = RenderOptions::new()
             .with_handler(&["aa", "aasvg"], AasvgHandler::new())
@@ -135,10 +134,7 @@ impl MarkdownProcessor for MarkdownProcessorImpl {
         }
     }
 
-    async fn highlight_code(
-        &self,
-        lang: String,
-        code: String) -> HighlightResult {
+    async fn highlight_code(&self, lang: String, code: String) -> HighlightResult {
         use marq::CodeBlockHandler;
 
         let handler = ArboriumHandler::new();
@@ -157,10 +153,7 @@ impl MarkdownProcessor for MarkdownProcessorImpl {
         }
     }
 
-    async fn parse_and_render(
-        &self,
-        source_path: String,
-        content: String) -> ParseResult {
+    async fn parse_and_render(&self, source_path: String, content: String) -> ParseResult {
         // Parse frontmatter
         let (fm, body) = match marq::parse_frontmatter(&content) {
             Ok(result) => result,
@@ -172,21 +165,21 @@ impl MarkdownProcessor for MarkdownProcessorImpl {
         };
 
         // Render markdown body
-        match self
-            .render_markdown(source_path, body.to_string())
-            .await
-        {
+        match self.render_markdown(source_path, body.to_string()).await {
             MarkdownResult::Success {
                 html,
                 headings,
                 reqs,
                 head_injections,
-            } => ParseResult::Success {
-                frontmatter: convert_frontmatter(fm),
-                html,
-                headings,
-                reqs,
-                head_injections,
+            } => match convert_frontmatter(fm) {
+                Ok(frontmatter) => ParseResult::Success {
+                    frontmatter,
+                    html,
+                    headings,
+                    reqs,
+                    head_injections,
+                },
+                Err(message) => ParseResult::Error { message },
             },
             MarkdownResult::Error { message } => ParseResult::Error { message },
         }
@@ -194,14 +187,15 @@ impl MarkdownProcessor for MarkdownProcessorImpl {
 }
 
 // Helper functions to convert marq types to protocol types
-fn convert_frontmatter(fm: marq::Frontmatter) -> Frontmatter {
-    Frontmatter {
+fn convert_frontmatter(fm: marq::Frontmatter) -> Result<Frontmatter, String> {
+    let extra = facet_postcard::to_vec(&fm.extra).map_err(|e| e.to_string())?;
+    Ok(Frontmatter {
         title: fm.title,
         weight: fm.weight,
         description: fm.description,
         template: fm.template,
-        extra: fm.extra, // Direct pass-through, no JSON conversion!
-    }
+        extra,
+    })
 }
 
 fn convert_heading(h: marq::Heading) -> Heading {

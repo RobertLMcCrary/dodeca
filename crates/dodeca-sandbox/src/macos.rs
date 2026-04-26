@@ -249,9 +249,9 @@ impl<'a> Command<'a> {
         use std::io::Write as _;
         tmp.write_all(profile.as_bytes())
             .map_err(|e| Error::ProfileGeneration(format!("failed to write profile: {e}")))?;
-        let (_file, profile_path) = tmp
-            .keep()
-            .map_err(|e| Error::ProfileGeneration(format!("failed to persist profile file: {e}")))?;
+        let (_file, profile_path) = tmp.keep().map_err(|e| {
+            Error::ProfileGeneration(format!("failed to persist profile file: {e}"))
+        })?;
 
         // Build the sandbox-exec command
         let mut cmd = process::Command::new("/usr/bin/sandbox-exec");
@@ -495,8 +495,7 @@ mod tests {
         let output = sandbox
             .command("/usr/bin/touch")
             .arg("/var/test-file")
-            .output()
-            ?;
+            .output()?;
 
         // Should fail because /var is read-only
         assert!(!output.status.success());
@@ -520,8 +519,7 @@ mod tests {
         let output = sandbox
             .command("/bin/sh")
             .args(["-c", "echo $TEST_SANDBOX_VAR"])
-            .output()
-            ?;
+            .output()?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);

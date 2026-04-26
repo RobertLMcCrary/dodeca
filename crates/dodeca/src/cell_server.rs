@@ -13,7 +13,7 @@ use std::time::Instant;
 
 use eyre::Result;
 // NOTE: Tunnel helpers + SHM incoming connections were removed during vox migration.
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::watch;
 
@@ -103,11 +103,7 @@ impl DevtoolsService for HostDevtoolsService {
     }
 
     /// Evaluate an expression in a snapshot's context.
-    async fn eval(
-        &self,
-        snapshot_id: String,
-        expression: String,
-    ) -> EvalResult {
+    async fn eval(&self, snapshot_id: String, expression: String) -> EvalResult {
         match self
             .server
             .eval_expression_for_route(&snapshot_id, &expression)
@@ -384,9 +380,127 @@ async fn handle_browser_connection(
     mut browser_stream: TcpStream,
     server: Arc<SiteServer>,
 ) -> Result<()> {
-    let _ = (conn_id, &mut browser_stream, server);
-    // TODO: restore browser tunneling via a supported vox transport.
+    let started_at = Instant::now();
+    let peer_addr = browser_stream.peer_addr().ok();
+    let local_addr = browser_stream.local_addr().ok();
+    tracing::trace!(
+        conn_id,
+        ?peer_addr,
+        ?local_addr,
+        "handle_browser_connection: start"
+    );
+
+    let tunnel_client = match Host::get().client_async::<TcpTunnelClient>().await {
+        Some(client) => client,
+        None => {
+            tracing::error!(conn_id, "Failed to get HTTP cell client");
+            if let Err(e) = browser_stream.write_all(FATAL_ERROR_RESPONSE).await {
+                tracing::warn!(conn_id, error = %e, "Failed to write 500 response");
+            }
+            return Ok(());
+        }
+    };
+
+    tracing::trace!(conn_id, "Waiting for revision readiness (per-connection)");
+    let revision_start = Instant::now();
+    server.wait_revision_ready().await;
+    tracing::trace!(
+        conn_id,
+        elapsed_ms = revision_start.elapsed().as_millis(),
+        "Revision ready (per-connection)"
+    );
+
+    let (to_cell_tx, to_cell_rx) = vox::channel::<Vec<u8>>();
+    let (from_cell_tx, mut from_cell_rx) = vox::channel::<Vec<u8>>();
+
+    let remote = cell_http_proto::Tunnel {
+        tx: from_cell_tx,
+        rx: to_cell_rx,
+    };
+
+    let open_started = Instant::now();
+    tunnel_client
+        .open(remote)
+        .await
+        .map_err(|e| eyre::eyre!("Failed to open tunnel: {:?}", e))?;
+
+    tracing::trace!(
+        conn_id,
+        open_elapsed_ms = open_started.elapsed().as_millis(),
+        "Tunnel opened for browser connection"
+    );
+
+    let (mut browser_read, mut browser_write) = browser_stream.split();
+    let browser_to_cell = async move {
+        let mut tx = to_cell_tx;
+        let mut buf = vec![0_u8; 16 * 1024];
+
+        loop {
+            let read = browser_read.read(&mut buf).await?;
+            if read == 0 {
+                tx.close(vox::Metadata::default()).await.map_err(|error| {
+                    std::io::Error::other(format!("failed to close tunnel tx: {error:?}"))
+                })?;
+                return Ok::<(), std::io::Error>(());
+            }
+
+            tx.send(buf[..read].to_vec()).await.map_err(|error| {
+                std::io::Error::other(format!("failed to send browser bytes: {error:?}"))
+            })?;
+        }
+    };
+
+    let cell_to_browser = async move {
+        loop {
+            match from_cell_rx.recv().await {
+                Ok(Some(bytes)) => {
+                    let bytes = take_owned(bytes);
+                    browser_write.write_all(&bytes).await?;
+                }
+                Ok(None) => {
+                    browser_write.shutdown().await?;
+                    return Ok::<(), std::io::Error>(());
+                }
+                Err(error) => {
+                    return Err(std::io::Error::other(format!(
+                        "failed to receive cell bytes: {error:?}"
+                    )));
+                }
+            }
+        }
+    };
+
+    match tokio::try_join!(browser_to_cell, cell_to_browser) {
+        Ok(((), ())) => {
+            tracing::trace!(
+                conn_id,
+                elapsed_ms = started_at.elapsed().as_millis(),
+                "browser <-> tunnel finished"
+            );
+        }
+        Err(error) => {
+            tracing::warn!(
+                conn_id,
+                error = %error,
+                elapsed_ms = started_at.elapsed().as_millis(),
+                "browser <-> tunnel error"
+            );
+        }
+    }
+
+    tracing::trace!(
+        conn_id,
+        elapsed_ms = started_at.elapsed().as_millis(),
+        "handle_browser_connection: end"
+    );
     Ok(())
+}
+
+fn take_owned<T: 'static>(value: vox::SelfRef<T>) -> T {
+    match value.try_map(|owned| Err::<(), _>(owned)) {
+        Ok(_) => unreachable!("take_owned always returns the owned value"),
+        Err(owned) => owned,
+    }
 }
 
 /*
@@ -436,10 +550,7 @@ async fn handle_browser_connection(
 /// Each browser that connects via WebSocket to /_/ws opens a virtual connection
 /// through cell-http to the host. This function accepts those connections and
 /// registers them with the SiteServer for receiving devtools events.
-pub async fn accept_browser_connections(
-    mut incoming: (),
-    server: Arc<SiteServer>,
-) {
+pub async fn accept_browser_connections(mut incoming: (), server: Arc<SiteServer>) {
     let _ = (&mut incoming, server);
     tracing::info!("Browser virtual connection acceptor disabled (no SHM transport)");
 }

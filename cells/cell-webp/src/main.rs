@@ -29,9 +29,7 @@ impl WebPProcessor for WebPProcessorImpl {
         }
     }
 
-    async fn encode_webp(
-        &self,
-        input: WebPEncodeInput) -> WebPResult {
+    async fn encode_webp(&self, input: WebPEncodeInput) -> WebPResult {
         if input.pixels.len() != (input.width * input.height * 4) as usize {
             return WebPResult::Error {
                 message: format!(

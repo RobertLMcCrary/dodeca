@@ -5,8 +5,8 @@
 //! - Calls back to host for template loading, data resolution, and function calls
 
 use cell_gingembre_proto::{
-    ContextId, ErrorLocation, EvalResult, RenderResult, TemplateRenderError, TemplateRenderer,
-    TemplateRendererDispatcher,
+    ContextId, ErrorLocation, EvalResult, RenderResult, RpcValue, TemplateRenderError,
+    TemplateRenderer, TemplateRendererDispatcher,
 };
 use cell_host_proto::{
     CallFunctionResult, HostServiceClient, KeysAtResult, LoadTemplateResult, ResolveDataResult,
@@ -93,7 +93,8 @@ impl RpcDataResolver {
 impl DataResolver for RpcDataResolver {
     fn resolve(
         &self,
-        path: &DataPath) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<Value>> + Send + '_>> {
+        path: &DataPath,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<Value>> + Send + '_>> {
         let path_segments = path.segments().to_vec();
         Box::pin(async move {
             match self
@@ -101,7 +102,13 @@ impl DataResolver for RpcDataResolver {
                 .resolve_data(self.context_id, path_segments)
                 .await
             {
-                Ok(ResolveDataResult::Found { value }) => Some(value),
+                Ok(ResolveDataResult::Found { value }) => match value.decode() {
+                    Ok(value) => Some(value),
+                    Err(e) => {
+                        tracing::warn!("RPC decode error resolving data: {}", e);
+                        None
+                    }
+                },
                 Ok(ResolveDataResult::NotFound) => None,
                 Err(e) => {
                     tracing::warn!("RPC error resolving data: {:?}", e);
@@ -113,7 +120,8 @@ impl DataResolver for RpcDataResolver {
 
     fn keys_at(
         &self,
-        path: &DataPath) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<Vec<String>>> + Send + '_>> {
+        path: &DataPath,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<Vec<String>>> + Send + '_>> {
         let path_segments = path.segments().to_vec();
         Box::pin(async move {
             match self.client.keys_at(self.context_id, path_segments).await {
@@ -133,19 +141,36 @@ impl DataResolver for RpcDataResolver {
 // ============================================================================
 
 /// Creates a function that calls back to the host via RPC.
-fn make_rpc_function(
-    handle: Caller,
-    context_id: ContextId,
-    name: String) -> gingembre::GlobalFn {
+fn make_rpc_function(handle: Caller, context_id: ContextId, name: String) -> gingembre::GlobalFn {
     Box::new(move |args: &[Value], kwargs: &[(String, Value)]| {
         let client = HostServiceClient::new(handle.clone());
         let name = name.clone();
-        let args = args.to_vec();
-        let kwargs = kwargs.to_vec();
+        let args = match args
+            .iter()
+            .map(RpcValue::encode)
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(args) => args,
+            Err(message) => {
+                return Box::pin(async move { Err(message.into()) });
+            }
+        };
+        let kwargs = match kwargs
+            .iter()
+            .map(|(key, value)| RpcValue::encode(value).map(|value| (key.clone(), value)))
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(kwargs) => kwargs,
+            Err(message) => {
+                return Box::pin(async move { Err(message.into()) });
+            }
+        };
 
         Box::pin(async move {
             match client.call_function(context_id, name, args, kwargs).await {
-                Ok(CallFunctionResult::Success { value }) => Ok(value),
+                Ok(CallFunctionResult::Success { value }) => {
+                    value.decode().map_err(Into::into)
+                }
                 Ok(CallFunctionResult::Error { message }) => Err(message.into()),
                 Err(e) => Err(format!("RPC error calling function: {:?}", e).into()),
             }
@@ -241,7 +266,8 @@ impl TemplateRendererImpl {
         &self,
         initial_context: &Value,
         resolver: Arc<dyn DataResolver>,
-        context_id: ContextId) -> Context {
+        context_id: ContextId,
+    ) -> Context {
         let mut ctx = Context::new();
 
         // Set the data resolver for lazy data loading
@@ -296,7 +322,19 @@ impl TemplateRenderer for TemplateRendererImpl {
         &self,
         context_id: ContextId,
         template_name: String,
-        initial_context: Value) -> RenderResult {
+        initial_context: RpcValue,
+    ) -> RenderResult {
+        let initial_context = match initial_context.decode() {
+            Ok(initial_context) => initial_context,
+            Err(message) => return RenderResult::Error {
+                error: TemplateRenderError {
+                    message: format!("failed to decode initial context: {message}"),
+                    location: None,
+                    help: None,
+                },
+            },
+        };
+
         // Create shared path map for tracking template name -> absolute path
         let path_map: PathMap = Arc::new(DashMap::new());
 
@@ -321,7 +359,15 @@ impl TemplateRenderer for TemplateRendererImpl {
         &self,
         context_id: ContextId,
         expression: String,
-        context: Value) -> EvalResult {
+        context: RpcValue,
+    ) -> EvalResult {
+        let context = match context.decode() {
+            Ok(context) => context,
+            Err(message) => return EvalResult::Error {
+                message: format!("failed to decode eval context: {message}"),
+            },
+        };
+
         // Create RPC-backed resolver (no loader needed for expression eval)
         let resolver = Arc::new(RpcDataResolver::new(self.host_client(), context_id));
 
@@ -330,7 +376,10 @@ impl TemplateRenderer for TemplateRendererImpl {
 
         // Evaluate the expression
         match gingembre::eval_expression(&expression, &ctx).await {
-            Ok(value) => EvalResult::Success { value },
+            Ok(value) => match RpcValue::encode(&value) {
+                Ok(value) => EvalResult::Success { value },
+                Err(message) => EvalResult::Error { message },
+            },
             Err(e) => {
                 let message = format!("{:?}", e);
                 EvalResult::Error { message }

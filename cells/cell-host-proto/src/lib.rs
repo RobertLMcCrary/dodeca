@@ -9,13 +9,11 @@ use std::collections::HashMap;
 
 // Re-export types from other proto crates
 pub use cell_gingembre_proto::{
-    CallFunctionResult, ContextId, KeysAtResult, LoadTemplateResult, ResolveDataResult,
+    CallFunctionResult, ContextId, KeysAtResult, LoadTemplateResult, ResolveDataResult, RpcValue,
 };
 pub use cell_http_proto::{EvalResult, ScopeEntry, ServeContent};
 pub use cell_lifecycle_proto::{ReadyAck, ReadyMsg};
 pub use cell_tui_proto::{CommandResult, ServerCommand};
-pub use facet_value::Value;
-
 // ============================================================================
 // HTML Host Result Types (for HTML cell callbacks)
 // ============================================================================
@@ -90,8 +88,8 @@ pub trait HostService {
         &self,
         context_id: ContextId,
         name: String,
-        args: Vec<Value>,
-        kwargs: Vec<(String, Value)>,
+        args: Vec<RpcValue>,
+        kwargs: Vec<(String, RpcValue)>,
     ) -> CallFunctionResult;
 
     // =========================================================================

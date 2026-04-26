@@ -21,7 +21,7 @@ use cell_fonts_proto::{FontProcessorClient, FontResult, SubsetFontInput};
 use cell_gingembre_proto::{ContextId, RenderResult, TemplateRendererClient};
 use cell_host_proto::{
     CallFunctionResult, CommandResult, HostService, KeysAtResult, LoadTemplateResult, ReadyAck,
-    ReadyMsg, ResolveDataResult, ServeContent, ServerCommand, Value,
+    ReadyMsg, ResolveDataResult, RpcValue, ServeContent, ServerCommand,
 };
 use cell_html_diff_proto::HtmlDifferClient;
 use cell_html_proto::HtmlProcessorClient;
@@ -41,6 +41,7 @@ use cell_vite_proto::ViteManagerClient;
 use cell_webp_proto::{WebPEncodeInput, WebPProcessorClient, WebPResult};
 use dashmap::DashMap;
 use facet::Facet;
+use facet_value::Value;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -213,29 +214,17 @@ impl HostService for HostServiceImpl {
     }
 
     // Template Host
-    async fn load_template(
-        &self,
-        context_id: ContextId,
-        name: String,
-    ) -> LoadTemplateResult {
+    async fn load_template(&self, context_id: ContextId, name: String) -> LoadTemplateResult {
         use cell_gingembre_proto::TemplateHost;
         self.template_host.load_template(context_id, name).await
     }
 
-    async fn resolve_data(
-        &self,
-        context_id: ContextId,
-        path: Vec<String>,
-    ) -> ResolveDataResult {
+    async fn resolve_data(&self, context_id: ContextId, path: Vec<String>) -> ResolveDataResult {
         use cell_gingembre_proto::TemplateHost;
         self.template_host.resolve_data(context_id, path).await
     }
 
-    async fn keys_at(
-        &self,
-        context_id: ContextId,
-        path: Vec<String>,
-    ) -> KeysAtResult {
+    async fn keys_at(&self, context_id: ContextId, path: Vec<String>) -> KeysAtResult {
         use cell_gingembre_proto::TemplateHost;
         self.template_host.keys_at(context_id, path).await
     }
@@ -244,8 +233,8 @@ impl HostService for HostServiceImpl {
         &self,
         context_id: ContextId,
         name: String,
-        args: Vec<Value>,
-        kwargs: Vec<(String, Value)>,
+        args: Vec<RpcValue>,
+        kwargs: Vec<(String, RpcValue)>,
     ) -> CallFunctionResult {
         use cell_gingembre_proto::TemplateHost;
         self.template_host
@@ -267,11 +256,7 @@ impl HostService for HostServiceImpl {
         }
     }
 
-    async fn get_scope(
-        &self,
-        route: String,
-        path: Vec<String>,
-    ) -> Vec<ScopeEntry> {
+    async fn get_scope(&self, route: String, path: Vec<String>) -> Vec<ScopeEntry> {
         if let Some(server) = &self.site_server {
             use cell_http_proto::ContentService;
             let content_service = crate::content_service::HostContentService::new(server.clone());
@@ -311,10 +296,7 @@ impl HostService for HostServiceImpl {
     }
 
     // HTML Host callbacks
-    async fn minify_css(
-        &self,
-        css: String,
-    ) -> cell_host_proto::MinifyCssResult {
+    async fn minify_css(&self, css: String) -> cell_host_proto::MinifyCssResult {
         // Delegate to CSS cell for minification (empty path_map = minify only)
         match css_cell().await {
             Some(client) => match client.rewrite_and_minify(css, HashMap::new()).await {
@@ -450,6 +432,8 @@ pub async fn render_template(
         .client_async::<TemplateRendererClient>()
         .await
         .ok_or_else(|| eyre::eyre!("Gingembre cell not available"))?;
+    let initial_context = cell_gingembre_proto::RpcValue::encode(&initial_context)
+        .map_err(|e| eyre::eyre!("failed to encode initial template context: {e}"))?;
     let result = cell
         .render(context_id, template_name.to_string(), initial_context)
         .await
@@ -862,6 +846,8 @@ pub async fn eval_expression_cell(
         .client_async::<TemplateRendererClient>()
         .await
         .ok_or_else(|| eyre::eyre!("Gingembre cell not available"))?;
+    let context = cell_gingembre_proto::RpcValue::encode(&context)
+        .map_err(|e| eyre::eyre!("failed to encode eval context: {e}"))?;
     let result = cell
         .eval_expression(context_id, expression.to_string(), context)
         .await

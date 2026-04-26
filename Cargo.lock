@@ -1504,6 +1504,7 @@ dependencies = [
  "facet-format",
  "facet-json",
  "facet-toml",
+ "facet-value",
  "facet-yaml",
 ]
 
@@ -1512,6 +1513,7 @@ name = "cell-data-proto"
 version = "0.6.1"
 dependencies = [
  "facet 0.46.0",
+ "facet-postcard",
  "facet-value",
  "vox",
 ]
@@ -1571,6 +1573,7 @@ name = "cell-gingembre-proto"
 version = "0.6.1"
 dependencies = [
  "facet 0.46.0",
+ "facet-postcard",
  "facet-value",
  "vox",
 ]
@@ -1745,6 +1748,7 @@ version = "0.6.1"
 dependencies = [
  "cell-markdown-proto",
  "dodeca-cell-runtime",
+ "facet-postcard",
  "marq",
 ]
 
@@ -8951,6 +8955,7 @@ dependencies = [
  "facet-cbor",
  "facet-core 0.46.0",
  "facet-error",
+ "facet-postcard",
  "facet-reflect 0.46.0",
  "getrandom 0.4.2",
  "moire",

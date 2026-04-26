@@ -331,7 +331,14 @@ pub async fn parse_file<DB: Db>(db: &DB, source: SourceFile) -> PicanteResult<Pa
     };
 
     // Convert frontmatter from cell type
-    let extra: Value = frontmatter.extra.clone();
+    let extra: Value = match facet_postcard::from_slice(&frontmatter.extra) {
+        Ok(extra) => extra,
+        Err(e) => {
+            return Ok(Err(MarkdownParseError {
+                message: format!("failed to decode frontmatter extra: {e}"),
+            }));
+        }
+    };
 
     // Convert headings from cell type to internal type
     let headings: Vec<Heading> = headings_raw
@@ -1160,9 +1167,8 @@ pub async fn build_site<DB: Db>(db: &DB) -> PicanteResult<Result<SiteOutput, Sit
     let mut files = Vec::new();
 
     let global_cfg = crate::config::global_config().expect("Global config not initialized");
-    let mut handlers: Vec<Box<dyn crate::protocols::ProtocolHandler>> = vec![
-        Box::new(crate::protocols::HtmlHandler),
-    ];
+    let mut handlers: Vec<Box<dyn crate::protocols::ProtocolHandler>> =
+        vec![Box::new(crate::protocols::HtmlHandler)];
     if global_cfg.protocols.gemini.unwrap_or(false) {
         handlers.push(Box::new(crate::protocols::GeminiHandler));
     }
@@ -1188,7 +1194,8 @@ pub async fn build_site<DB: Db>(db: &DB) -> PicanteResult<Result<SiteOutput, Sit
                     .await
                     .unwrap_or_default();
                 let parsed_dom = html_parser::Dom::parse(&served.html).unwrap_or_default();
-                let has_custom_tags = served.html.contains("data-protocol") || served.html.contains("<wrapper>");
+                let has_custom_tags =
+                    served.html.contains("data-protocol") || served.html.contains("<wrapper>");
                 for handler in &handlers {
                     let proto = handler.protocol_name();
                     let mut handler_dom = parsed_dom.clone();
@@ -1220,7 +1227,8 @@ pub async fn build_site<DB: Db>(db: &DB) -> PicanteResult<Result<SiteOutput, Sit
                     .await
                     .unwrap_or_default();
                 let parsed_dom = html_parser::Dom::parse(&served.html).unwrap_or_default();
-                let has_custom_tags = served.html.contains("data-protocol") || served.html.contains("<wrapper>");
+                let has_custom_tags =
+                    served.html.contains("data-protocol") || served.html.contains("<wrapper>");
                 for handler in &handlers {
                     let proto = handler.protocol_name();
                     let mut handler_dom = parsed_dom.clone();

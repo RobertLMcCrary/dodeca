@@ -20,7 +20,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
   src = lib.cleanSource ./.;
 
   # Single vendored-deps hash (update by building once).
-  cargoHash = "sha256-QW2CYPLc1i9ZGemzFSAZQOYdA4eQVnq+Bc0/XqVC4wk=";
+  cargoHash = "sha256-fL4tQ6MJRjLhtIjUkmVUhsKvw5Vj4+zIuW5k8sv9GGY=";
 
   doCheck = false;
 

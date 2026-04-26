@@ -14,9 +14,7 @@ use cell_sass_proto::{SassCompiler, SassCompilerDispatcher, SassInput, SassResul
 pub struct SassCompilerImpl;
 
 impl SassCompiler for SassCompilerImpl {
-    async fn compile_sass(
-        &self,
-        input: SassInput) -> SassResult {
+    async fn compile_sass(&self, input: SassInput) -> SassResult {
         let files = input.files;
 
         // Find main.scss
@@ -74,7 +72,8 @@ impl grass::Fs for InMemorySassFs {
         self.files.get(path).cloned().ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                format!("File not found: {path:?}"))
+                format!("File not found: {path:?}"),
+            )
         })
     }
 }

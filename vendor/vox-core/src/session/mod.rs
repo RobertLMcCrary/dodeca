@@ -578,6 +578,52 @@ fn forwarded_payload<'a>(payload: &'a vox_types::Payload<'a>) -> vox_types::Payl
     vox_types::Payload::PostcardBytes(bytes)
 }
 
+fn encode_payload_value(
+    ptr: facet_core::PtrConst,
+    shape: &'static Shape,
+) -> std::io::Result<Vec<u8>> {
+    let peek = unsafe { facet_reflect::Peek::unchecked_new(ptr, shape) };
+    facet_postcard::peek_to_vec(peek).map_err(|e| std::io::Error::other(e.to_string()))
+}
+
+fn materialize_payload<'a>(
+    payload: &mut vox_types::Payload<'a>,
+    binder: Option<&'a dyn vox_types::ChannelBinder>,
+) -> std::io::Result<()> {
+    let vox_types::Payload::Value { ptr, shape, .. } = payload else {
+        return Ok(());
+    };
+
+    let encode = || encode_payload_value(*ptr, shape);
+    let bytes = match binder {
+        Some(binder) => vox_types::with_channel_binder(binder, encode)?,
+        None => encode()?,
+    };
+    *payload = vox_types::Payload::PostcardBytes(Box::leak(bytes.into_boxed_slice()));
+    Ok(())
+}
+
+fn materialize_message_payloads<'a>(
+    msg: &mut Message<'a>,
+    binder: Option<&'a dyn vox_types::ChannelBinder>,
+) -> std::io::Result<()> {
+    match &mut msg.payload {
+        MessagePayload::RequestMessage(req) => match &mut req.body {
+            RequestBody::Call(call) => materialize_payload(&mut call.args, binder)?,
+            RequestBody::Response(response) => materialize_payload(&mut response.ret, binder)?,
+            RequestBody::Cancel(_) => {}
+        },
+        MessagePayload::ChannelMessage(channel) => {
+            if let vox_types::ChannelBody::Item(item) = &mut channel.body {
+                materialize_payload(&mut item.item, binder)?;
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
 fn forwarded_request_body<'a>(body: &'a RequestBody<'a>) -> RequestBody<'a> {
     match body {
         RequestBody::Call(call) => RequestBody::Call(vox_types::RequestCall {
@@ -2165,6 +2211,10 @@ impl SessionCore {
                 (tx, conn_state, Vec::new())
             }
         };
+        materialize_message_payloads(&mut msg, binder).map_err(|e| {
+            tracing::error!(conn = ?conn_id, error = ?e, "materialize_message_payloads failed");
+            ()
+        })?;
         let payload_send = tx.clone().prepare_msg(msg, binder).map_err(|e| {
             tracing::error!(conn = ?conn_id, error = ?e, "prepare_msg failed");
             ()

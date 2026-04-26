@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ config.title }}{% endblock title %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="/landing.css">
+    <link href="https://fonts.googleapis.com/css2?family=Corben&family=Tenor+Sans&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header>
+        <input type="checkbox" id="menu-toggle" aria-label="Toggle navigation menu">
+        <label for="menu-toggle" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+        </label>
+        <a href="/" aria-label="Nudox home">
+            <img src="/logo.svg" alt="Nudox">
+        </a>
+        <nav role="navigation" aria-label="Main navigation">
+            <a href="/pricing/">Pricing</a>
+            <a href="/features/">Features</a>
+            <a href="#blog">Blog</a>
+        </nav>
+        <button class="btn-circular" type="button" aria-label="Decorative flourish">
+            <img src="/squiggle.svg" alt="">
+        </button>
+    </header>
+    <main>
+        {% block body %}{% endblock body %}
+    </main>
+    <footer role="contentinfo">
+        <span id="blog" class="visually-hidden"></span>
+        <span id="privacy" class="visually-hidden"></span>
+        <span id="terms" class="visually-hidden"></span>
+        <span id="contact" class="visually-hidden"></span>
+        <nav aria-label="Footer navigation">
+            {% for item in data.footer.items %}
+            <a href="{{ item.href }}">{{ item.text }}</a>
+            {% endfor %}
+        </nav>
+    </footer>
+    {% block scripts %}{% endblock scripts %}
+</body>
+</html>

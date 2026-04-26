@@ -1343,7 +1343,10 @@ impl SiteServer {
         // Evaluate the expression via cell
         match crate::cells::eval_expression_cell(guard.id(), expression, context_value).await {
             Ok(cell_gingembre_proto::EvalResult::Success { value }) => {
-                Ok(value_to_scope_value(&value))
+                match value.decode() {
+                    Ok(value) => Ok(value_to_scope_value(&value)),
+                    Err(e) => Err(format!("Failed to decode expression result: {e}")),
+                }
             }
             Ok(cell_gingembre_proto::EvalResult::Error { message }) => {
                 // Convert ANSI error to HTML for display in devtools

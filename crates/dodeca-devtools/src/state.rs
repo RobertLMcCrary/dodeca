@@ -9,8 +9,6 @@ use crate::protocol::{
     BrowserService, BrowserServiceDispatcher, DevtoolsEvent, DevtoolsServiceClient, ErrorInfo,
     ScopeEntry, ScopeValue,
 };
-use vox::DriverCaller;
-use vox::session;
 use vox_websocket::WsLink;
 
 /// A single REPL entry with expression and result
@@ -104,7 +102,7 @@ impl DevtoolsState {
 
 // Thread-local storage for RPC client (WASM is single-threaded)
 thread_local! {
-    static RPC_CLIENT: RefCell<Option<DevtoolsServiceClient<DriverCaller>>> = const { RefCell::new(None) };
+    static RPC_CLIENT: RefCell<Option<DevtoolsServiceClient>> = const { RefCell::new(None) };
     static STATE_SIGNAL: RefCell<Option<Signal<DevtoolsState>>> = const { RefCell::new(None) };
     static ROUTE_WATCHER_INSTALLED: RefCell<bool> = const { RefCell::new(false) };
 }
@@ -116,7 +114,7 @@ thread_local! {
 struct BrowserServiceImpl;
 
 impl BrowserService for BrowserServiceImpl {
-    async fn on_event(&self, _cx: &vox::RequestContext, event: DevtoolsEvent) {
+    async fn on_event(&self, event: DevtoolsEvent) {
         tracing::debug!(
             "[devtools] received event via on_event: {:?}",
             event_summary(&event)
@@ -126,7 +124,7 @@ impl BrowserService for BrowserServiceImpl {
 }
 
 /// Get a clone of the RPC client from thread-local storage
-fn get_client() -> Option<DevtoolsServiceClient<DriverCaller>> {
+fn get_client() -> Option<DevtoolsServiceClient> {
     RPC_CLIENT.with(|cell| cell.borrow().clone())
 }
 
@@ -244,19 +242,17 @@ pub async fn connect_websocket(state: Signal<DevtoolsState>) -> Result<(), Strin
 
     state.update(|s| s.connection_state = ConnectionState::Connecting);
 
-    // Connect via roam WebSocket link
+    // Connect via Vox WebSocket link
     let transport = WsLink::connect(&url)
         .await
         .map_err(|e| format!("WebSocket connect failed: {:?}", e))?;
 
     let dispatcher = BrowserServiceDispatcher::new(BrowserServiceImpl);
-    let (caller, _session_handle) = session::initiator(transport)
-        .establish::<DriverCaller>(dispatcher)
+    let client = vox::initiator_on(transport, vox::TransportMode::Bare)
+        .on_connection(dispatcher)
+        .establish::<DevtoolsServiceClient>()
         .await
         .map_err(|e| format!("RPC handshake failed: {:?}", e))?;
-
-    // Create the RPC client
-    let client = DevtoolsServiceClient::new(caller);
 
     // Store client for later use
     RPC_CLIENT.with(|cell| {

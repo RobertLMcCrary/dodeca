@@ -28,9 +28,7 @@ impl ImageProcessor for ImageProcessorImpl {
         decode_format(&data, image::ImageFormat::Gif)
     }
 
-    async fn resize_image(
-        &self,
-        input: ResizeInput) -> ImageResult {
+    async fn resize_image(&self, input: ResizeInput) -> ImageResult {
         let img =
             match pixels_to_dynamic_image(&input.pixels, input.width, input.height, input.channels)
             {
@@ -49,7 +47,8 @@ impl ImageProcessor for ImageProcessorImpl {
         let resized = img.resize_exact(
             input.target_width,
             target_height,
-            image::imageops::FilterType::Lanczos3);
+            image::imageops::FilterType::Lanczos3,
+        );
 
         let rgba = resized.to_rgba8();
         ImageResult::Success {
@@ -62,9 +61,7 @@ impl ImageProcessor for ImageProcessorImpl {
         }
     }
 
-    async fn generate_thumbhash_data_url(
-        &self,
-        input: ThumbhashInput) -> ImageResult {
+    async fn generate_thumbhash_data_url(&self, input: ThumbhashInput) -> ImageResult {
         let img = match pixels_to_dynamic_image(&input.pixels, input.width, input.height, 4) {
             Some(img) => img,
             None => {
@@ -85,7 +82,8 @@ impl ImageProcessor for ImageProcessorImpl {
         let hash = thumbhash::rgba_to_thumb_hash(
             thumb_img.width() as usize,
             thumb_img.height() as usize,
-            rgba.as_raw());
+            rgba.as_raw(),
+        );
 
         // Decode thumbhash back to RGBA for the placeholder image
         let (w, h, rgba_pixels) = match thumbhash::thumb_hash_to_rgba(&hash) {
@@ -114,7 +112,8 @@ impl ImageProcessor for ImageProcessorImpl {
             img_buf.as_raw(),
             img_buf.width(),
             img_buf.height(),
-            image::ExtendedColorType::Rgba8) {
+            image::ExtendedColorType::Rgba8,
+        ) {
             return ImageResult::Error {
                 message: format!("Failed to encode PNG: {e}"),
             };
@@ -154,7 +153,8 @@ fn pixels_to_dynamic_image(
     pixels: &[u8],
     width: u32,
     height: u32,
-    channels: u8) -> Option<DynamicImage> {
+    channels: u8,
+) -> Option<DynamicImage> {
     match channels {
         3 => {
             let img_buf =

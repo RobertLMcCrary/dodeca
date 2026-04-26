@@ -1,7 +1,7 @@
+use super::{ProtocolHandler, serialize_dom};
 use crate::db::OutputFile;
 use crate::types::Route;
 use html_parser::Dom;
-use super::{ProtocolHandler, serialize_dom};
 
 pub struct HtmlHandler;
 
@@ -19,11 +19,12 @@ impl ProtocolHandler for HtmlHandler {
         hrefs: Vec<String>,
         element_ids: Vec<String>,
     ) -> Option<OutputFile> {
-        let content = if original_html.contains("data-protocol") || original_html.contains("<wrapper>") {
-            serialize_dom(dom, original_html)
-        } else {
-            original_html.to_string()
-        };
+        let content =
+            if original_html.contains("data-protocol") || original_html.contains("<wrapper>") {
+                serialize_dom(dom, original_html)
+            } else {
+                original_html.to_string()
+            };
         Some(OutputFile::Html {
             route: route.clone(),
             content,

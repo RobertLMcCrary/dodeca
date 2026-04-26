@@ -1,7 +1,7 @@
+use super::ProtocolHandler;
 use crate::db::OutputFile;
 use crate::types::Route;
 use html_parser::{Dom, Node};
-use super::ProtocolHandler;
 
 pub struct GopherHandler {
     pub header: Option<String>,

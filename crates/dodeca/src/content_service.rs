@@ -55,19 +55,11 @@ impl ContentService for HostContentService {
         self.server.find_content_for_rpc(&path).await
     }
 
-    async fn get_scope(
-        &self,
-        route: String,
-        path: Vec<String>,
-    ) -> Vec<ScopeEntry> {
+    async fn get_scope(&self, route: String, path: Vec<String>) -> Vec<ScopeEntry> {
         self.server.get_scope_for_route(&route, &path).await
     }
 
-    async fn eval_expression(
-        &self,
-        route: String,
-        expression: String,
-    ) -> EvalResult {
+    async fn eval_expression(&self, route: String, expression: String) -> EvalResult {
         match self
             .server
             .eval_expression_for_route(&route, &expression)

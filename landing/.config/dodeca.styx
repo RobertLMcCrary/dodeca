@@ -1,0 +1,23 @@
+content content
+output dist
+
+syntax_highlight {
+    light_theme github-light
+    dark_theme tokyo-night
+}
+
+stable_assets (
+    "landing.css"
+    "layers.css"
+    "base/fonts.css"
+    "base/reset.css"
+    "base/variables.css"
+    "components/elements.css"
+    "components/navigation.css"
+    "components/ui.css"
+    "components/utilities.css"
+    "components/Landing/style.css"
+    "logo.svg"
+    "squiggle.svg"
+    "fonts/BIFUR___.TTF"
+)

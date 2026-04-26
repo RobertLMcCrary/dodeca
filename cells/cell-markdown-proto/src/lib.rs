@@ -7,12 +7,10 @@
 //! - Rule definition extraction
 
 use facet::Facet;
-use facet_value::Value;
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use facet_value::{DestructuredRef, VObject, VString};
+    use facet_value::{DestructuredRef, VObject, VString, Value};
 
     #[test]
     fn test_frontmatter_extra_roundtrip() {
@@ -27,7 +25,7 @@ mod tests {
             weight: 0,
             description: None,
             template: None,
-            extra: Value::from(extra),
+            extra: facet_postcard::to_vec(&Value::from(extra)).expect("serialize extra"),
         };
 
         // Serialize with facet_postcard
@@ -38,7 +36,8 @@ mod tests {
 
         // Verify extra fields survived
         assert_eq!(fm2.title, "Test");
-        match fm2.extra.destructure_ref() {
+        let extra: Value = facet_postcard::from_slice(&fm2.extra).expect("deserialize extra");
+        match extra.destructure_ref() {
             DestructuredRef::Object(obj) => {
                 let sidebar = obj.get("sidebar").expect("sidebar should exist");
                 assert_eq!(sidebar.as_bool(), Some(true));
@@ -56,8 +55,7 @@ mod tests {
     #[test]
     fn test_vox_schema_plan_for_wire_parse_result() {
         use core::convert::Infallible;
-        let shape =
-            <Result<ParseResult, vox::VoxError<Infallible>> as vox::facet::Facet>::SHAPE;
+        let shape = <Result<ParseResult, vox::VoxError<Infallible>> as vox::facet::Facet>::SHAPE;
         vox_types::SchemaSendTracker::plan_for_shape(shape).expect("schema plan should succeed");
     }
 }
@@ -96,8 +94,8 @@ pub struct Frontmatter {
     pub weight: i32,
     pub description: Option<String>,
     pub template: Option<String>,
-    /// Extra fields from frontmatter
-    pub extra: Value,
+    /// Extra frontmatter fields, encoded as postcard bytes for RPC transport.
+    pub extra: Vec<u8>,
 }
 
 // ============================================================================

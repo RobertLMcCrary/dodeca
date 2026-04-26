@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page.title }}{% endblock title %}
+
+{% block body %}
+{% if page.extra and page.extra.dashboard %}
+{% set default_tool = data.integrations.integration | first %}
+<section class="dashboard-shell" data-dashboard-root data-default-tool="{{ default_tool.name }}">
+    {{ page.content | safe }}
+    <h2>Used Requests</h2>
+    <section id="usage">
+        <dl class="usage-grid">
+            <div><dt>Requests</dt><dd>...</dd></div>
+            <div><dt>Parsing Tokens</dt><dd>...</dd></div>
+            <div><dt>Seats</dt><dd>...</dd></div>
+            <div><dt>Cost</dt><dd>...</dd></div>
+        </dl>
+    </section>
+
+    <section class="dashboard-card">
+        <div class="dashboard-card__header">
+            <div>
+                <h3>API Keys</h3>
+                <p><em>Manage your keys</em></p>
+            </div>
+            <button type="button">Create</button>
+        </div>
+        <aside class="dashboard-empty-state">
+            <strong>No API Keys Yet <em>Click here to generate your first</em></strong>
+        </aside>
+    </section>
+
+    <section class="dashboard-card">
+        <div id="mcp_setup">
+            <nav class="tab-bar" role="tablist" aria-label="Integration selector">
+                {% for integration in data.integrations.integration %}
+                <button
+                    type="button"
+                    role="tab"
+                    class="mcp-tab"
+                    data-tool="{{ integration.name }}"
+                    aria-selected="{% if loop.first %}true{% else %}false{% endif %}"
+                >
+                    {{ integration.name }}
+                </button>
+                {% endfor %}
+            </nav>
+
+            <div class="mcp-panel">
+                <fieldset class="transport-switch">
+                    <legend>Transport</legend>
+                    <label>
+                        <input type="radio" name="scope" value="remote" checked>
+                        Remote (HTTP)
+                    </label>
+                    <label>
+                        <input type="radio" name="scope" value="local">
+                        Local (stdio / npx)
+                    </label>
+                </fieldset>
+
+                <div class="aqua-window">
+                    <strong id="snippet-title">{{ default_tool.name }} configuration</strong>
+                    <pre class="code-wrap"><code id="code-snippet"></code></pre>
+                </div>
+            </div>
+
+            <div hidden aria-hidden="true">
+                {% for integration in data.integrations.integration %}
+                <template id="snippet-{{ integration.name }}-remote">{{ integration.remote }}</template>
+                <template id="snippet-{{ integration.name }}-local">{{ integration.local }}</template>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+</section>
+{% else %}
+{{ page.content | safe }}
+{% endif %}
+{% endblock body %}
+
+{% block scripts %}
+{% if page.extra and page.extra.dashboard %}
+<script>
+const root = document.querySelector("[data-dashboard-root]");
+
+if (root) {
+  const tabs = Array.from(root.querySelectorAll("[data-tool]"));
+  const radios = Array.from(root.querySelectorAll('input[name="scope"]'));
+  const title = root.querySelector("#snippet-title");
+  const code = root.querySelector("#code-snippet");
+
+  const selectedMode = () =>
+    root.querySelector('input[name="scope"]:checked')?.value ?? "remote";
+
+  const setTool = (tool) => {
+    root.dataset.activeTool = tool;
+
+    for (const tab of tabs) {
+      const active = tab.dataset.tool === tool;
+      tab.setAttribute("aria-selected", active ? "true" : "false");
+      tab.classList.toggle("is-active", active);
+    }
+
+    render();
+  };
+
+  const render = () => {
+    const tool = root.dataset.activeTool || root.dataset.defaultTool;
+    const mode = selectedMode();
+    const template = document.getElementById(`snippet-${tool}-${mode}`);
+
+    if (!template || !title || !code) {
+      return;
+    }
+
+    title.textContent = `${tool} configuration`;
+    code.textContent = template.innerHTML.trim();
+  };
+
+  for (const tab of tabs) {
+    tab.addEventListener("click", () => setTool(tab.dataset.tool));
+  }
+
+  for (const radio of radios) {
+    radio.addEventListener("change", render);
+  }
+
+  setTool(root.dataset.defaultTool);
+}
+</script>
+{% endif %}
+{% endblock scripts %}

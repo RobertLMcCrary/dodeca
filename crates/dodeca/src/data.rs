@@ -33,7 +33,7 @@ pub async fn parse_data_file(content: &str, format: DataFormat) -> Result<Value,
         .ok_or_else(|| "Data cell not available".to_string())?;
 
     match client.load_data(content.to_string(), format).await {
-        Ok(LoadDataResult::Success { value }) => Ok(value),
+        Ok(LoadDataResult::Success { value }) => value.decode(),
         Ok(LoadDataResult::Error { message }) => Err(message),
         Err(e) => Err(format!("RPC error: {:?}", e)),
     }

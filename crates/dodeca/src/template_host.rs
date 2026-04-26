@@ -14,7 +14,7 @@
 //! 6. After rendering, the context is unregistered
 
 use cell_gingembre_proto::{
-    CallFunctionResult, ContextId, KeysAtResult, LoadTemplateResult, ResolveDataResult,
+    CallFunctionResult, ContextId, KeysAtResult, LoadTemplateResult, ResolveDataResult, RpcValue,
     TemplateHost,
 };
 use facet_value::{DestructuredRef, VArray, VObject, VString, Value};
@@ -115,11 +115,7 @@ impl Default for TemplateHostImpl {
 }
 
 impl TemplateHost for TemplateHostImpl {
-    async fn load_template(
-        &self,
-        context_id: ContextId,
-        name: String,
-    ) -> LoadTemplateResult {
+    async fn load_template(&self, context_id: ContextId, name: String) -> LoadTemplateResult {
         let host = crate::host::Host::get();
         let Some(context) = host.get_render_context(context_id) else {
             tracing::warn!(
@@ -168,11 +164,7 @@ impl TemplateHost for TemplateHostImpl {
         }
     }
 
-    async fn resolve_data(
-        &self,
-        context_id: ContextId,
-        path: Vec<String>,
-    ) -> ResolveDataResult {
+    async fn resolve_data(&self, context_id: ContextId, path: Vec<String>) -> ResolveDataResult {
         let Some(context) = crate::host::Host::get().get_render_context(context_id) else {
             tracing::warn!(
                 context_id = context_id.0,
@@ -204,7 +196,18 @@ impl TemplateHost for TemplateHostImpl {
                     path = ?path,
                     "resolve_data: found"
                 );
-                ResolveDataResult::Found { value }
+                match RpcValue::encode(&value) {
+                    Ok(value) => ResolveDataResult::Found { value },
+                    Err(error) => {
+                        tracing::warn!(
+                            context_id = context_id.0,
+                            path = ?path,
+                            error = %error,
+                            "resolve_data: failed to encode value"
+                        );
+                        ResolveDataResult::NotFound
+                    }
+                }
             }
             Ok(None) => {
                 tracing::debug!(
@@ -226,11 +229,7 @@ impl TemplateHost for TemplateHostImpl {
         }
     }
 
-    async fn keys_at(
-        &self,
-        context_id: ContextId,
-        path: Vec<String>,
-    ) -> KeysAtResult {
+    async fn keys_at(&self, context_id: ContextId, path: Vec<String>) -> KeysAtResult {
         let Some(context) = crate::host::Host::get().get_render_context(context_id) else {
             tracing::warn!(
                 context_id = context_id.0,
@@ -281,8 +280,8 @@ impl TemplateHost for TemplateHostImpl {
         &self,
         context_id: ContextId,
         name: String,
-        args: Vec<Value>,
-        kwargs: Vec<(String, Value)>,
+        args: Vec<RpcValue>,
+        kwargs: Vec<(String, RpcValue)>,
     ) -> CallFunctionResult {
         let Some(context) = crate::host::Host::get().get_render_context(context_id) else {
             tracing::warn!(
@@ -303,12 +302,39 @@ impl TemplateHost for TemplateHostImpl {
             "call_function"
         );
 
+        let args: Vec<Value> = match args
+            .into_iter()
+            .map(|value| value.decode())
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(args) => args,
+            Err(message) => {
+                return CallFunctionResult::Error { message };
+            }
+        };
+
+        let kwargs: Vec<(String, Value)> = match kwargs
+            .into_iter()
+            .map(|(key, value)| value.decode().map(|value| (key, value)))
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(kwargs) => kwargs,
+            Err(message) => {
+                return CallFunctionResult::Error { message };
+            }
+        };
+
         // Helper to get kwarg by name
         let get_kwarg = |key: &str| -> Option<String> {
             kwargs
                 .iter()
                 .find(|(k, _)| k == key)
                 .map(|(_, v)| value_to_string(v))
+        };
+
+        let rpc_success = |value: Value| match RpcValue::encode(&value) {
+            Ok(value) => CallFunctionResult::Success { value },
+            Err(message) => CallFunctionResult::Error { message },
         };
 
         match name.as_str() {
@@ -321,9 +347,7 @@ impl TemplateHost for TemplateHostImpl {
                 } else {
                     format!("/{path}")
                 };
-                CallFunctionResult::Success {
-                    value: Value::from(url.as_str()),
-                }
+                rpc_success(Value::from(url.as_str()))
             }
 
             "get_section" => {
@@ -390,7 +414,7 @@ impl TemplateHost for TemplateHostImpl {
                     Value::NULL
                 };
 
-                CallFunctionResult::Success { value: result }
+                rpc_success(result)
             }
 
             "now" => {
@@ -398,9 +422,7 @@ impl TemplateHost for TemplateHostImpl {
                 let format = get_kwarg("format").unwrap_or_else(|| "%Y-%m-%d".to_string());
                 let now = chrono::Local::now();
                 let formatted = now.format(&format).to_string();
-                CallFunctionResult::Success {
-                    value: Value::from(formatted.as_str()),
-                }
+                rpc_success(Value::from(formatted.as_str()))
             }
 
             "throw" => {
@@ -450,9 +472,7 @@ impl TemplateHost for TemplateHostImpl {
                     crate::build_steps::BuildStepResult::Success(bytes) => {
                         // Return as string (UTF-8)
                         match String::from_utf8(bytes) {
-                            Ok(s) => CallFunctionResult::Success {
-                                value: Value::from(s.as_str()),
-                            },
+                            Ok(s) => rpc_success(Value::from(s.as_str())),
                             Err(e) => CallFunctionResult::Error {
                                 message: format!("Build step output is not valid UTF-8: {}", e),
                             },
@@ -484,9 +504,7 @@ impl TemplateHost for TemplateHostImpl {
                 match result {
                     crate::build_steps::BuildStepResult::Success(bytes) => {
                         match String::from_utf8(bytes) {
-                            Ok(s) => CallFunctionResult::Success {
-                                value: Value::from(s.as_str()),
-                            },
+                            Ok(s) => rpc_success(Value::from(s.as_str())),
                             Err(e) => CallFunctionResult::Error {
                                 message: format!("File content is not valid UTF-8: {}", e),
                             },
@@ -505,9 +523,7 @@ impl TemplateHost for TemplateHostImpl {
                 let body = body.trim();
 
                 match crate::cells::highlight_code_cell(&lang, body).await {
-                    Ok(html) => CallFunctionResult::Success {
-                        value: Value::from(html.as_str()),
-                    },
+                    Ok(html) => rpc_success(Value::from(html.as_str())),
                     Err(e) => CallFunctionResult::Error {
                         message: format!("highlight error: {}", e),
                     },

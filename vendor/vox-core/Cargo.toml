@@ -72,6 +72,9 @@ version = "0.46"
 [dependencies.facet-error]
 version = "0.46"
 
+[dependencies.facet-postcard]
+version = "0.46"
+
 [dependencies.facet-reflect]
 version = "0.46"
 

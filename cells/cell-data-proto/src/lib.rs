@@ -3,7 +3,24 @@
 //! Defines services for loading and parsing data files (JSON, TOML, YAML).
 
 use facet::Facet;
-pub use facet_value::Value;
+use facet_value::Value;
+
+#[derive(Debug, Clone, Facet)]
+pub struct RpcValue {
+    pub bytes: Vec<u8>,
+}
+
+impl RpcValue {
+    pub fn encode(value: &Value) -> Result<Self, String> {
+        facet_postcard::to_vec(value)
+            .map(|bytes| Self { bytes })
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn decode(&self) -> Result<Value, String> {
+        facet_postcard::from_slice(&self.bytes).map_err(|e| e.to_string())
+    }
+}
 
 /// Supported data file formats
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Facet)]
@@ -32,7 +49,7 @@ impl DataFormat {
 #[repr(u8)]
 pub enum LoadDataResult {
     /// Successfully loaded and parsed data
-    Success { value: Value },
+    Success { value: RpcValue },
     /// Error during loading or parsing
     Error { message: String },
 }

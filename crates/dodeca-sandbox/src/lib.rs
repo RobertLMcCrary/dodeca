@@ -90,8 +90,7 @@ edition = "2021"
 # generated under another Cargo workspace directory.
 [workspace]
 "#,
-        )
-        ?;
+        )?;
 
         std::fs::create_dir(project_dir.join("src"))?;
         std::fs::write(
@@ -100,8 +99,7 @@ edition = "2021"
     println!("Hello from sandboxed build!");
 }
 "#,
-        )
-        ?;
+        )?;
 
         // Avoid touching the network in tests. This project has no deps.
         // SAFETY: test-local env var change in isolated process
@@ -109,8 +107,10 @@ edition = "2021"
 
         // Get paths from environment
         let home_dir = std::env::var("HOME").unwrap_or_else(|_| base.to_string_lossy().into());
-        let rustup_home = std::env::var("RUSTUP_HOME").unwrap_or_else(|_| format!("{home_dir}/.rustup"));
-        let cargo_home = std::env::var("CARGO_HOME").unwrap_or_else(|_| format!("{home_dir}/.cargo"));
+        let rustup_home =
+            std::env::var("RUSTUP_HOME").unwrap_or_else(|_| format!("{home_dir}/.rustup"));
+        let cargo_home =
+            std::env::var("CARGO_HOME").unwrap_or_else(|_| format!("{home_dir}/.cargo"));
 
         // In Nix shells (and some CI), `rustup` may not be present. Fall back to PATH.
         let rustup_ok = Command::new("rustup").arg("--version").output().is_ok();
@@ -141,7 +141,9 @@ edition = "2021"
                 .arg("rustc")
                 .output()
                 .expect("failed to run which rustc");
-            let rustc_path = String::from_utf8_lossy(&rustc_path.stdout).trim().to_string();
+            let rustc_path = String::from_utf8_lossy(&rustc_path.stdout)
+                .trim()
+                .to_string();
             let toolchain_bin = std::path::Path::new(&rustc_path)
                 .parent()
                 .unwrap_or(std::path::Path::new("/usr/bin"))

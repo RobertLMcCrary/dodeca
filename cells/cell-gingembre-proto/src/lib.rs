@@ -10,6 +10,23 @@
 use facet::Facet;
 use facet_value::Value;
 
+#[derive(Facet, Debug, Clone, Default)]
+pub struct RpcValue {
+    pub bytes: Vec<u8>,
+}
+
+impl RpcValue {
+    pub fn encode(value: &Value) -> Result<Self, String> {
+        facet_postcard::to_vec(value)
+            .map(|bytes| Self { bytes })
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn decode(&self) -> Result<Value, String> {
+        facet_postcard::from_slice(&self.bytes).map_err(|e| e.to_string())
+    }
+}
+
 // ============================================================================
 // Error types
 // ============================================================================
@@ -76,7 +93,7 @@ pub enum LoadTemplateResult {
 #[repr(u8)]
 pub enum ResolveDataResult {
     /// Value found at path
-    Found { value: Value },
+    Found { value: RpcValue },
     /// Path not found in data tree
     NotFound,
 }
@@ -96,7 +113,7 @@ pub enum KeysAtResult {
 #[repr(u8)]
 pub enum EvalResult {
     /// Expression evaluated successfully
-    Success { value: Value },
+    Success { value: RpcValue },
     /// Evaluation failed with error
     Error { message: String },
 }
@@ -106,7 +123,7 @@ pub enum EvalResult {
 #[repr(u8)]
 pub enum CallFunctionResult {
     /// Function returned a value
-    Success { value: Value },
+    Success { value: RpcValue },
     /// Function call failed with error
     Error { message: String },
 }
@@ -148,7 +165,7 @@ pub trait TemplateRenderer {
         &self,
         context_id: ContextId,
         template_name: String,
-        initial_context: Value,
+        initial_context: RpcValue,
     ) -> RenderResult;
 
     /// Evaluate a standalone expression (for devtools REPL).
@@ -161,7 +178,7 @@ pub trait TemplateRenderer {
         &self,
         context_id: ContextId,
         expression: String,
-        context_value: Value,
+        context_value: RpcValue,
     ) -> EvalResult;
 }
 
@@ -211,7 +228,7 @@ pub trait TemplateHost {
         &self,
         context_id: ContextId,
         name: String,
-        args: Vec<Value>,
-        kwargs: Vec<(String, Value)>,
+        args: Vec<RpcValue>,
+        kwargs: Vec<(String, RpcValue)>,
     ) -> CallFunctionResult;
 }

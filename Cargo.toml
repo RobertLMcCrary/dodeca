@@ -95,7 +95,7 @@ styx-embed = "3.0"
 figue = "2.0"
 
 # RPC framework (vox)
-vox = "0.4"
+vox = { version = "0.4", default-features = false, features = ["runtime"] }
 vox-core = "0.4"
 vox-fdpass = "0.4"
 vox-local = "0.4"
@@ -388,4 +388,3 @@ needless_lifetimes = "allow"
 significant_drop_tightening = "allow"
 missing_panics_doc = "allow"
 multiple_crate_versions = "allow"
-

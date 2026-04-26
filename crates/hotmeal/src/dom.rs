@@ -7,13 +7,13 @@
 //! - **Zero conversions**: Same representation used by parser, differ, and patch applier
 
 use cinereus::indextree::{Arena, NodeId};
+use html5ever::tendril::{StrTendril, TendrilSink};
 use html5ever::tree_builder::{ElemName, ElementFlags, NodeOrText, QuirksMode, TreeSink};
 use html5ever::{Attribute, LocalName, QualName, parse_document};
 use html5ever::{local_name, ns};
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use html5ever::tendril::{StrTendril, TendrilSink};
 
 use crate::diff::{DiffError, InsertContent, NodeRef, Patch, PropKey};
 use crate::{Stem, debug};

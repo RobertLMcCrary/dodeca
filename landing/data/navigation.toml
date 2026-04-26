@@ -1,0 +1,11 @@
+[[items]]
+href = "/pricing/"
+text = "Pricing"
+
+[[items]]
+href = "/features/"
+text = "Features"
+
+[[items]]
+href = "#blog"
+text = "Blog"

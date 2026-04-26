@@ -2,13 +2,13 @@ use crate::db::OutputFile;
 use crate::types::Route;
 use html_parser::{Dom, Element, Node};
 
-pub mod html;
 pub mod gemini;
 pub mod gopher;
+pub mod html;
 
-pub use html::HtmlHandler;
 pub use gemini::GeminiHandler;
 pub use gopher::GopherHandler;
+pub use html::HtmlHandler;
 
 pub trait ProtocolHandler: Send + Sync {
     fn protocol_name(&self) -> &'static str;
@@ -59,7 +59,7 @@ pub fn filter_nodes(nodes: &mut Vec<Node>, protocol: &str) {
                 unwrap = true;
             }
         }
-        
+
         if remove {
             nodes.remove(i);
         } else if unwrap {
@@ -97,7 +97,9 @@ pub fn serialize_node(node: &Node, out: &mut String) {
                 }
             }
             if el.children.is_empty() {
-                if ["br", "img", "hr", "meta", "link", "input", "source"].contains(&el.name.as_str()) {
+                if ["br", "img", "hr", "meta", "link", "input", "source"]
+                    .contains(&el.name.as_str())
+                {
                     out.push_str(" />");
                 } else {
                     out.push_str(&format!("></{}>", el.name));
@@ -120,7 +122,11 @@ pub fn serialize_node(node: &Node, out: &mut String) {
 
 pub fn serialize_dom(dom: &Dom, original_html: &str) -> String {
     let mut out = String::new();
-    if original_html.trim_start().to_lowercase().starts_with("<!doctype html>") {
+    if original_html
+        .trim_start()
+        .to_lowercase()
+        .starts_with("<!doctype html>")
+    {
         out.push_str("<!DOCTYPE html>\n");
     }
     for child in &dom.children {

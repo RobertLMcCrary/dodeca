@@ -40,10 +40,7 @@ impl JXLProcessor for JXLProcessorImpl {
         }
     }
 
-    async fn encode_jxl(
-        &self,
-        input: JXLEncodeInput,
-    ) -> JXLResult {
+    async fn encode_jxl(&self, input: JXLEncodeInput) -> JXLResult {
         if input.pixels.len() != (input.width * input.height * 4) as usize {
             return JXLResult::Error {
                 message: format!(

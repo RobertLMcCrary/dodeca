@@ -1345,7 +1345,8 @@ pub async fn build(
 
     // Check config if protocols are enabled to know if we should put html in /http/
     let global_cfg = crate::config::global_config().expect("Global config not initialized");
-    let multi_protocol = global_cfg.protocols.gemini.unwrap_or(false) || global_cfg.protocols.gopher.unwrap_or(false);
+    let multi_protocol = global_cfg.protocols.gemini.unwrap_or(false)
+        || global_cfg.protocols.gopher.unwrap_or(false);
 
     for output in &site_output.files {
         match output {
@@ -1365,7 +1366,9 @@ pub async fn build(
                 .await;
                 let path = route_to_path(output_dir, route);
                 let path = if multi_protocol {
-                    output_dir.join("http").join(path.strip_prefix(output_dir).unwrap_or(&path))
+                    output_dir
+                        .join("http")
+                        .join(path.strip_prefix(output_dir).unwrap_or(&path))
                 } else {
                     path
                 };
@@ -1382,7 +1385,9 @@ pub async fn build(
                 if path.extension() == Some("html") {
                     path.set_extension("gmi");
                 }
-                let path = output_dir.join("gemini").join(path.strip_prefix(output_dir).unwrap_or(&path));
+                let path = output_dir
+                    .join("gemini")
+                    .join(path.strip_prefix(output_dir).unwrap_or(&path));
                 if store.write_if_changed(&path, content.as_bytes())? {
                     // We can track gemini stats if we wanted
                 }
@@ -1394,7 +1399,9 @@ pub async fn build(
                 } else if path.extension() == Some("html") {
                     path.set_extension("txt");
                 }
-                let path = output_dir.join("gopher").join(path.strip_prefix(output_dir).unwrap_or(&path));
+                let path = output_dir
+                    .join("gopher")
+                    .join(path.strip_prefix(output_dir).unwrap_or(&path));
                 if store.write_if_changed(&path, content.as_bytes())? {
                     // track gopher stats
                 }
@@ -1402,7 +1409,9 @@ pub async fn build(
             OutputFile::Css { path, content } => {
                 let dest = output_dir.join(path.as_str());
                 let dest = if multi_protocol {
-                    output_dir.join("http").join(dest.strip_prefix(output_dir).unwrap_or(&dest))
+                    output_dir
+                        .join("http")
+                        .join(dest.strip_prefix(output_dir).unwrap_or(&dest))
                 } else {
                     dest
                 };
@@ -1414,9 +1423,13 @@ pub async fn build(
                 if multi_protocol {
                     let mut written = false;
                     for proto in ["http", "gemini", "gopher"] {
-                        if proto == "gemini" && !global_cfg.protocols.gemini.unwrap_or(false) { continue; }
-                        if proto == "gopher" && !global_cfg.protocols.gopher.unwrap_or(false) { continue; }
-                        
+                        if proto == "gemini" && !global_cfg.protocols.gemini.unwrap_or(false) {
+                            continue;
+                        }
+                        if proto == "gopher" && !global_cfg.protocols.gopher.unwrap_or(false) {
+                            continue;
+                        }
+
                         let dest = output_dir.join(proto).join(path.as_str());
                         if store.write_if_changed(&dest, content)? {
                             written = true;
