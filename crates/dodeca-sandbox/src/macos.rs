@@ -381,31 +381,59 @@ pub struct Output {
 mod tests {
     use super::*;
 
+    fn seatbelt_available() -> bool {
+        let Ok(dir) = tempfile::tempdir() else {
+            return false;
+        };
+        let profile_path = dir.path().join("probe.sb");
+        let profile = r#"(version 1)
+(allow default)
+"#;
+        if std::fs::write(&profile_path, profile).is_err() {
+            return false;
+        }
+        let output = process::Command::new("/usr/bin/sandbox-exec")
+            .arg("-f")
+            .arg(&profile_path)
+            .arg("/usr/bin/true")
+            .output();
+        match output {
+            Ok(out) => out.status.success(),
+            Err(_) => false,
+        }
+    }
+
     #[test]
-    fn test_simple_command() {
-        if std::env::var("IN_NIX_SHELL").is_ok() {
-            return;
+    fn test_simple_command() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        if !seatbelt_available() {
+            return Ok(());
         }
         let config = SandboxConfig::new()
             .allow_read("/usr")
             .allow_read_execute("/bin");
 
-        let sandbox = Sandbox::new(config).unwrap();
-        let output = sandbox.command("/bin/echo").arg("hello").output().unwrap();
+        let sandbox = Sandbox::new(config)?;
+        let output = sandbox.command("/bin/echo").arg("hello").output()?;
 
-        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            output.status.success(),
+            "sandboxed command failed:\nstdout: {stdout}\nstderr: {stderr}"
+        );
         assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "hello");
+        Ok(())
     }
 
     #[test]
-    fn test_profile_generation() {
+    fn test_profile_generation() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let config = SandboxConfig::new()
             .allow_read("/usr")
             .allow_read_write("/tmp/test")
             .allow_execute("/usr/bin/cargo")
             .deny_network();
 
-        let sandbox = Sandbox::new(config).unwrap();
+        let sandbox = Sandbox::new(config)?;
         let cmd = sandbox.command("/bin/echo");
         let profile = cmd.generate_profile();
 
@@ -414,32 +442,37 @@ mod tests {
         assert!(profile.contains("(allow file-read* (subpath \"/usr\"))"));
         assert!(profile.contains("(allow file-read* file-write* (subpath \"/tmp/test\"))"));
         assert!(!profile.contains("network-outbound"));
+        Ok(())
     }
 
     #[test]
-    fn test_write_blocked() {
+    fn test_write_blocked() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        if !seatbelt_available() {
+            return Ok(());
+        }
         let config = SandboxConfig::new()
             .allow_read("/var") // read-only!
             .allow_read_execute("/usr")
             .allow_read_execute("/bin");
 
-        let sandbox = Sandbox::new(config).unwrap();
+        let sandbox = Sandbox::new(config)?;
 
         // Try to write to a read-only location
         let output = sandbox
             .command("/usr/bin/touch")
             .arg("/var/test-file")
             .output()
-            .unwrap();
+            ?;
 
         // Should fail because /var is read-only
         assert!(!output.status.success());
+        Ok(())
     }
 
     #[test]
-    fn test_env_inheritance() {
-        if std::env::var("IN_NIX_SHELL").is_ok() {
-            return;
+    fn test_env_inheritance() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        if !seatbelt_available() {
+            return Ok(());
         }
         // SAFETY: This test runs in isolation and we're setting a test-specific variable
         unsafe { std::env::set_var("TEST_SANDBOX_VAR", "test_value") };
@@ -449,14 +482,20 @@ mod tests {
             .allow_read_execute("/bin")
             .inherit_env("TEST_SANDBOX_VAR");
 
-        let sandbox = Sandbox::new(config).unwrap();
+        let sandbox = Sandbox::new(config)?;
         let output = sandbox
             .command("/bin/sh")
             .args(["-c", "echo $TEST_SANDBOX_VAR"])
             .output()
-            .unwrap();
+            ?;
 
-        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            output.status.success(),
+            "sandboxed command failed:\nstdout: {stdout}\nstderr: {stderr}"
+        );
         assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "test_value");
+        Ok(())
     }
 }

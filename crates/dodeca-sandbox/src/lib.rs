@@ -59,16 +59,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_cargo_build() {
-        if std::env::var("IN_NIX_SHELL").is_ok() {
-            return;
-        }
+    fn test_cargo_build() -> std::result::Result<(), Box<dyn std::error::Error>> {
         use std::process::Command;
 
         // Create temp directory outside of /tmp to avoid conflict with
-        // the sandbox's isolated tmpfs mount on Linux
-        let home_dir = std::env::var("HOME").expect("HOME not set");
-        let temp_dir = tempfile::tempdir_in(&home_dir).unwrap();
+        // the sandbox's isolated tmpfs mount on Linux.
+        //
+        // In Nix builds, $HOME can be "/homeless-shelter" and may not exist; avoid relying on it.
+        let base = std::env::current_dir()?.join(".dodeca-sandbox-tests");
+        std::fs::create_dir_all(&base)?;
+        let temp_dir = tempfile::tempdir_in(&base)?;
         let project_dir = temp_dir.path();
 
         // Create a minimal Rust project
@@ -80,11 +80,15 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+
+# Ensure this temp project is treated as its own workspace even when
+# generated under another Cargo workspace directory.
+[workspace]
 "#,
         )
-        .unwrap();
+        ?;
 
-        std::fs::create_dir(project_dir.join("src")).unwrap();
+        std::fs::create_dir(project_dir.join("src"))?;
         std::fs::write(
             project_dir.join("src/main.rs"),
             r#"fn main() {
@@ -92,22 +96,15 @@ edition = "2021"
 }
 "#,
         )
-        .unwrap();
+        ?;
 
-        // Run cargo fetch outside the sandbox to download dependencies
-        // (the project has no deps, but this ensures the index is ready)
-        let fetch_status = Command::new("cargo")
-            .args(["fetch"])
-            .current_dir(project_dir)
-            .status()
-            .expect("failed to run cargo fetch");
-        assert!(fetch_status.success(), "cargo fetch failed");
+        // Avoid touching the network in tests. This project has no deps.
+        std::env::set_var("CARGO_NET_OFFLINE", "true");
 
         // Get paths from environment
-        let rustup_home =
-            std::env::var("RUSTUP_HOME").unwrap_or_else(|_| format!("{home_dir}/.rustup"));
-        let cargo_home =
-            std::env::var("CARGO_HOME").unwrap_or_else(|_| format!("{home_dir}/.cargo"));
+        let home_dir = std::env::var("HOME").unwrap_or_else(|_| base.to_string_lossy().into());
+        let rustup_home = std::env::var("RUSTUP_HOME").unwrap_or_else(|_| format!("{home_dir}/.rustup"));
+        let cargo_home = std::env::var("CARGO_HOME").unwrap_or_else(|_| format!("{home_dir}/.cargo"));
 
         // In Nix shells (and some CI), `rustup` may not be present. Fall back to PATH.
         let rustup_ok = Command::new("rustup").arg("--version").output().is_ok();
@@ -227,14 +224,15 @@ edition = "2021"
             (config, extra_env)
         };
 
-        let sandbox = Sandbox::new(config).unwrap();
+        let sandbox = Sandbox::new(config)?;
         let mut cmd = sandbox
             .command(&cargo_path)
-            .args(["build", "--release"])
+            .args(["build", "--release", "--offline"])
             .current_dir(project_dir)
             .env("RUSTUP_HOME", &rustup_home)
             .env("CARGO_HOME", &cargo_home)
             .env("HOME", &home_dir)
+            .env("CARGO_NET_OFFLINE", "true")
             .env(
                 "PATH",
                 format!("{cargo_home}/bin:{toolchain_bin}:/usr/bin:/bin"),
@@ -245,7 +243,7 @@ edition = "2021"
             cmd = cmd.env(&key, &value);
         }
 
-        let output = cmd.output().unwrap();
+        let output = cmd.output()?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -261,5 +259,6 @@ edition = "2021"
             binary_path.exists(),
             "binary was not created at {binary_path:?}"
         );
+        Ok(())
     }
 }
