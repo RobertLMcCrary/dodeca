@@ -1138,9 +1138,16 @@ pub struct BuildResult {
     pub success: bool,
     pub stdout: String,
     pub stderr: String,
+    fixture_dir: PathBuf,
+    _temp_dir: tempfile::TempDir,
 }
 
 impl BuildResult {
+    /// The output directory used for this build invocation.
+    pub fn output_dir(&self) -> PathBuf {
+        self.fixture_dir.join("public")
+    }
+
     /// Assert the build succeeded
     pub fn assert_success(&self) -> &Self {
         assert!(
@@ -1317,6 +1324,8 @@ fn build_site_from_source_sync(src: &Path, extra_args: &[&str]) -> BuildResult {
         success: output.status.success(),
         stdout: String::from_utf8_lossy(&output.stdout).to_string(),
         stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        fixture_dir,
+        _temp_dir: temp_dir,
     }
 }
 

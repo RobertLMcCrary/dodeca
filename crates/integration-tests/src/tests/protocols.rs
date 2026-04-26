@@ -41,9 +41,10 @@ pub fn gemini_output_generated_for_enabled_protocol() {
     let result = site.build();
     result.assert_success();
 
-    let http_index = site.fixture_dir.join("public/http/index.html");
-    let gemini_index = site.fixture_dir.join("public/gemini/index.gmi");
-    let gemini_guide = site.fixture_dir.join("public/gemini/guide/index.gmi");
+    let output_dir = result.output_dir();
+    let http_index = output_dir.join("http/index.html");
+    let gemini_index = output_dir.join("gemini/index.gmi");
+    let gemini_guide = output_dir.join("gemini/guide/index.gmi");
 
     assert!(http_index.exists(), "expected HTTP output at {}", http_index.display());
     assert!(
@@ -75,8 +76,9 @@ pub fn gopher_output_generated_for_enabled_protocol() {
     let result = site.build();
     result.assert_success();
 
-    let gopher_index = site.fixture_dir.join("public/gopher/gophermap");
-    let gopher_guide = site.fixture_dir.join("public/gopher/guide/gophermap");
+    let output_dir = result.output_dir();
+    let gopher_index = output_dir.join("gopher/gophermap");
+    let gopher_guide = output_dir.join("gopher/guide/gophermap");
 
     assert!(
         gopher_index.exists(),
